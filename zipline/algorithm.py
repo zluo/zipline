@@ -453,10 +453,6 @@ class TradingAlgorithm(object):
         skipped.
         """
 
-        if not self.initialized:
-            self.initialize(*self.initialize_args, **self.initialize_kwargs)
-            self.initialized = True
-
         if self.perf_tracker is None:
             # HACK: When running with the `run` method, we set perf_tracker to
             # None so that it will be overwritten here.
@@ -468,6 +464,10 @@ class TradingAlgorithm(object):
 
             # Set the dt initially to the period start by forcing it to change.
             self.on_dt_changed(self.sim_params.period_start)
+
+        if not self.initialized:
+            self.initialize(*self.initialize_args, **self.initialize_kwargs)
+            self.initialized = True
 
         self.data_gen = self._create_data_generator(source_filter, sim_params)
 
@@ -578,9 +578,6 @@ class TradingAlgorithm(object):
         # this is a repeat run of the algorithm.
         self.perf_tracker = None
 
-        # create zipline
-        self.gen = self._create_generator(self.sim_params)
-
         # Create history containers
         if self.history_specs:
             self.history_container = self.history_container_class(
@@ -594,7 +591,7 @@ class TradingAlgorithm(object):
         # loop through simulated_trading, each iteration returns a
         # perf dictionary
         perfs = []
-        for perf in self.gen:
+        for perf in self.get_generator():
             perfs.append(perf)
 
         # convert perf dict to pandas dataframe

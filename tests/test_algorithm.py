@@ -943,10 +943,33 @@ class TestAlgoScript(TestCase):
 
     @classmethod
     def setUpClass(cls):
+        setup_logger(cls)
         cls.env = TradingEnvironment()
-        cls.env.write_data(
-            equities_identifiers=[0, 1, 133]
-        )
+        cls.sim_params = factory.create_simulation_parameters(num_days=251,
+                                                              env=cls.env)
+
+        cls.sids = [0, 1, 3, 133]
+        cls.tempdir = TempDirectory()
+
+        equities_metadata = {}
+
+        for sid in cls.sids:
+            equities_metadata[sid] = {
+                'start_date': cls.sim_params.period_start,
+                'end_date': cls.sim_params.period_end
+            }
+
+            if sid == 3:
+                equities_metadata[sid]["symbol"] = "TEST"
+                equities_metadata[sid]["asset_type"] = "equity"
+
+        cls.env.write_data(equities_data=equities_metadata)
+
+        cls.data_portal = create_data_portal(cls.env,
+                                             cls.tempdir,
+                                             cls.sim_params,
+                                             cls.sids)
+
 
     @classmethod
     def tearDownClass(cls):
@@ -1182,6 +1205,7 @@ def handle_data(context, data):
 
         self.zipline_test_config['algorithm'] = test_algo
         self.zipline_test_config['trade_count'] = 200
+        self.zipline_test_config['data_portal'] = self.data_portal
 
         zipline = simfactory.create_test_zipline(
             **self.zipline_test_config)
@@ -1257,10 +1281,9 @@ def handle_data(context, data):
             sim_params=self.sim_params,
             env=self.env,
         )
-        set_algo_instance(test_algo)
-
         self.zipline_test_config['algorithm'] = test_algo
         self.zipline_test_config['trade_count'] = 1
+        self.zipline_test_config['data_portal'] = self.data_portal
 
         zipline = simfactory.create_test_zipline(
             **self.zipline_test_config)

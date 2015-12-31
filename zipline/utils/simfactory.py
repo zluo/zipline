@@ -84,6 +84,8 @@ def create_test_zipline(**config):
 
     test_algo.benchmark_return_source = config.get('benchmark_source', None)
 
+    test_algo.data_portal = config['data_portal']
+
     # ------------------
     # generator/simulator
     sim = test_algo.get_generator()
