@@ -15,6 +15,8 @@
 from collections import deque
 from logbook import Logger
 
+import numpy as np
+
 log = Logger('DataPortal')
 
 BASE_FIELDS = {
@@ -26,6 +28,11 @@ BASE_FIELDS = {
     'close_price': 'close',
     'volume': 'volume',
     'price': 'close'
+}
+
+EVENT_FIELD_OVERRIDES = {
+    'open': 'open_price',
+    'close': 'close_price'
 }
 
 
@@ -83,7 +90,15 @@ class DataPortal(object):
         -------
         The value of the desired field at the desired time.
         """
-        raise NotImplementedError
+        field = EVENT_FIELD_OVERRIDES.get(field, field)
+        try:
+            asset_bars = self._trade_bars[asset]
+            if len(asset_bars) >= 1:
+                return getattr(asset_bars[0], field)
+            else:
+                return np.nan
+        except KeyError:
+            return np.nan
 
     def get_spot_value(self, asset, field, dt, data_frequency):
         """
@@ -111,7 +126,11 @@ class DataPortal(object):
         -------
         The value of the desired field at the desired time.
         """
-        raise NotImplementedError
+        field = EVENT_FIELD_OVERRIDES.get(field, field)
+        try:
+            return getattr(self._trade_bars[asset][-1], field)
+        except KeyError:
+            return np.nan
 
     def get_history_window(self, assets, end_dt, bar_count, frequency, field,
                            ffill=True):
