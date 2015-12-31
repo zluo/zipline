@@ -1076,6 +1076,7 @@ def handle_data(context, data):
 
         self.zipline_test_config['algorithm'] = test_algo
         self.zipline_test_config['trade_count'] = 200
+        self.zipline_test_config['data_portal'] = self.data_portal
 
         # this matches the value in the algotext initialize
         # method, and will be used inside assert_single_position
@@ -1132,6 +1133,7 @@ def handle_data(context, data):
 
         self.zipline_test_config['algorithm'] = test_algo
         self.zipline_test_config['trade_count'] = 100
+        self.zipline_test_config['data_portal'] = self.data_portal
 
         # 67 will be used inside assert_single_position
         # to confirm we have as many transactions as expected.
@@ -1234,6 +1236,7 @@ def handle_data(context, data):
 
         self.zipline_test_config['algorithm'] = test_algo
         self.zipline_test_config['trade_count'] = 200
+        self.zipline_test_config['data_portal'] = self.data_portal
 
         zipline = simfactory.create_test_zipline(
             **self.zipline_test_config)
@@ -1267,6 +1270,7 @@ def handle_data(context, data):
 
         self.zipline_test_config['algorithm'] = test_algo
         self.zipline_test_config['trade_count'] = 1
+        self.zipline_test_config['data_portal'] = self.data_portal
 
         zipline = simfactory.create_test_zipline(
             **self.zipline_test_config)
@@ -1877,9 +1881,32 @@ class TestAccountControls(TestCase):
 
 class TestClosePosAlgo(TestCase):
 
+    @classmethod
+    def setUpClass(cls):
+        cls.tempdir = TempDirectory()
+        cls.env = TradingEnvironment()
+        cls.days = pd.date_range(start=pd.Timestamp("2006-01-09", tz='UTC'),
+                                 end=pd.Timestamp("2006-01-12", tz='UTC'))
+
+        cls.sid = 1
+
+        cls.sim_params = factory.create_simulation_parameters(
+            start=cls.days[0],
+            end=cls.days[-1]
+        )
+
+        cls.data_portal = create_data_portal(
+            cls.env,
+            cls.tempdir,
+            cls.sim_params,
+            [cls.sid]
+        )
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.tempdir.cleanup()
+
     def setUp(self):
-        self.env = TradingEnvironment()
-        self.days = self.env.trading_days[:4]
         self.panel = pd.Panel({1: pd.DataFrame({
             'price': [1, 1, 2, 4], 'volume': [1e9, 1e9, 1e9, 0],
             'type': [DATASOURCE_TYPE.TRADE,

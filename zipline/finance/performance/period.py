@@ -226,11 +226,11 @@ class PerformancePeriod(object):
                     continue
 
                 old_price = self._data_portal.get_previous_value(
-                    sid, 'close', old_price_dt, self.data_frequency
+                    sid, 'price', old_price_dt, self.data_frequency
                 )
 
                 price = self._data_portal.get_spot_value(
-                    sid, 'close', self.period_close, self.data_frequency,
+                    sid, 'price', self.period_close, self.data_frequency,
                 )
 
                 payout = (
