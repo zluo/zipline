@@ -24,6 +24,7 @@ from toolz import concat
 from zipline.assets import AssetFinder
 from zipline.assets.asset_writer import AssetDBWriterFromDataFrame
 from zipline.assets.futures import CME_CODE_TO_MONTH
+from zipline.data.data_portal import DataPortal
 from zipline.finance.order import ORDER_STATUS
 from zipline.utils import security_list
 
@@ -474,6 +475,11 @@ class ExplodingObject(object):
     """
     def __getattribute__(self, name):
         raise UnexpectedAttributeAccess(name)
+
+
+def create_data_portal(env, tempdir, sim_params, sids, sid_path_func=None,
+                       adjustment_reader=None):
+    return DataPortal(env)
 
 
 class tmp_assets_db(object):

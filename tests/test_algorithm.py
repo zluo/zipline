@@ -17,6 +17,7 @@ from datetime import timedelta
 from mock import MagicMock
 from nose_parameterized import parameterized
 from six.moves import range, map
+from testfixtures import TempDirectory
 from textwrap import dedent
 from unittest import TestCase
 
@@ -102,6 +103,10 @@ from zipline.protocol import DATASOURCE_TYPE
 from zipline.finance.trading import TradingEnvironment
 from zipline.finance.commission import PerShare
 
+from zipline.utils.test_utils import (
+    create_data_portal,
+)
+
 # Because test cases appear to reuse some resources.
 _multiprocess_can_split_ = False
 
@@ -111,7 +116,23 @@ class TestRecordAlgorithm(TestCase):
     @classmethod
     def setUpClass(cls):
         cls.env = TradingEnvironment()
-        cls.env.write_data(equities_identifiers=[133])
+
+        cls.sids = [133]
+        cls.env.write_data(equities_identifiers=cls.sids)
+
+        cls.sim_params = factory.create_simulation_parameters(
+            num_days=4,
+            env=cls.env
+        )
+
+        cls.tempdir = TempDirectory()
+
+        cls.data_portal = create_data_portal(
+            cls.env,
+            cls.tempdir,
+            cls.sim_params,
+            cls.sids
+        )
 
     @classmethod
     def tearDownClass(cls):
@@ -136,7 +157,7 @@ class TestRecordAlgorithm(TestCase):
 
     def test_record_incr(self):
         algo = RecordAlgorithm(sim_params=self.sim_params, env=self.env)
-        output = algo.run(self.source)
+        output = algo.run(self.source, data_portal=self.data_portal)
 
         np.testing.assert_array_equal(output['incr'].values,
                                       range(1, len(output) + 1))
@@ -255,7 +276,7 @@ class TestMiscellaneousAPI(TestCase):
                                 handle_data=handle_data,
                                 sim_params=self.sim_params,
                                 env=self.env)
-        algo.run(self.source)
+        algo.run(self.source, data_portal=self.data_portal)
 
     def test_get_open_orders(self):
 
@@ -306,7 +327,7 @@ class TestMiscellaneousAPI(TestCase):
                                 handle_data=handle_data,
                                 sim_params=self.sim_params,
                                 env=self.env)
-        algo.run(self.source)
+        algo.run(self.source, data_portal=self.data_portal)
 
     def test_schedule_function(self):
         date_rules = DateRuleFactory
@@ -343,7 +364,7 @@ class TestMiscellaneousAPI(TestCase):
             sim_params=self.sim_params,
             env=self.env,
         )
-        algo.run(self.source)
+        algo.run(self.source, data_portal=self.data_portal)
 
         self.assertEqual(algo.func_called, algo.days)
 
@@ -382,7 +403,7 @@ class TestMiscellaneousAPI(TestCase):
             create_event_context=CallbackManager(pre, post),
             env=self.env,
         )
-        algo.run(self.source)
+        algo.run(self.source, data_portal=self.data_portal)
 
         self.assertEqual(len(expected_data), 779)
         self.assertEqual(collected_data_pre, expected_data)
@@ -688,7 +709,7 @@ class TestTransformAlgorithm(TestCase):
             env=self.env,
             sids=[133]
         )
-        algo.run(self.source)
+        algo.run(self.source, data_portal=self.data_portal)
         self.assertEqual(len(algo.sources), 1)
         assert isinstance(algo.sources[0], SpecificEquityTrades)
 
@@ -698,7 +719,7 @@ class TestTransformAlgorithm(TestCase):
             sim_params=self.sim_params,
             env=self.env,
         )
-        algo.run(self.source)
+        algo.run(self.source, data_portal=self.data_portal)
 
     def test_multi_source_as_input(self):
         sim_params = SimulationParameters(
@@ -711,7 +732,8 @@ class TestTransformAlgorithm(TestCase):
             sids=[0, 1],
             env=self.env,
         )
-        algo.run([self.source, self.df_source], overwrite_sim_params=False)
+        algo.run([self.source, self.df_source], overwrite_sim_params=False,
+                 data_portal=self.data_portal)
         self.assertEqual(len(algo.sources), 2)
 
     def test_df_as_input(self):
@@ -719,7 +741,7 @@ class TestTransformAlgorithm(TestCase):
             sim_params=self.sim_params,
             env=self.env,
         )
-        algo.run(self.df)
+        algo.run(self.df, data_portal=self.data_portal)
         assert isinstance(algo.sources[0], DataFrameSource)
 
     def test_panel_as_input(self):
@@ -729,7 +751,7 @@ class TestTransformAlgorithm(TestCase):
             sids=[0, 1])
         panel = self.panel.copy()
         panel.items = pd.Index(map(Equity, panel.items))
-        algo.run(panel)
+        algo.run(panel, data_portal=self.data_portal)
         assert isinstance(algo.sources[0], DataPanelSource)
 
     def test_df_of_assets_as_input(self):
@@ -739,7 +761,7 @@ class TestTransformAlgorithm(TestCase):
         )
         df = self.df.copy()
         df.columns = pd.Index(map(Equity, df.columns))
-        algo.run(df)
+        algo.run(df, data_portal=self.data_portal)
         assert isinstance(algo.sources[0], DataFrameSource)
 
     def test_panel_of_assets_as_input(self):
@@ -747,7 +769,7 @@ class TestTransformAlgorithm(TestCase):
             sim_params=self.sim_params,
             env=TradingEnvironment(),  # new env without assets
             sids=[0, 1])
-        algo.run(self.panel)
+        algo.run(self.panel, data_portal=self.data_portal)
         assert isinstance(algo.sources[0], DataPanelSource)
 
     def test_run_twice(self):
@@ -756,7 +778,7 @@ class TestTransformAlgorithm(TestCase):
             sids=[0, 1]
         )
 
-        res1 = algo1.run(self.df)
+        res1 = algo1.run(self.df, data_portal=self.data_portal)
 
         # Create a new trading algorithm, which will
         # use the newly instantiated environment.
@@ -765,7 +787,7 @@ class TestTransformAlgorithm(TestCase):
             sids=[0, 1]
         )
 
-        res2 = algo2.run(self.df)
+        res2 = algo2.run(self.df, data_portal=self.data_portal)
 
         np.testing.assert_array_equal(res1, res2)
 
@@ -802,7 +824,7 @@ class TestTransformAlgorithm(TestCase):
         asset_to_test = algo.sid(0)
         self.assertIsInstance(asset_to_test, Equity)
 
-        algo.run(self.df)
+        algo.run(self.df, data_portal=self.data_portal)
 
     @parameterized.expand([
         (TestOrderAlgorithm,),
@@ -821,7 +843,7 @@ class TestTransformAlgorithm(TestCase):
         asset_to_test = algo.sid(0)
         self.assertIsInstance(asset_to_test, Future)
 
-        algo.run(self.df)
+        algo.run(self.df, data_portal=self.data_portal)
 
     def test_order_method_style_forwarding(self):
 
@@ -840,13 +862,13 @@ class TestTransformAlgorithm(TestCase):
                 instant_fill=False,
                 method_name=name
             )
-            algo.run(self.df)
+            algo.run(self.df, data_portal=self.data_portal)
 
     def test_order_instant(self):
         algo = TestOrderInstantAlgorithm(sim_params=self.sim_params,
                                          env=self.env,
                                          instant_fill=True)
-        algo.run(self.df)
+        algo.run(self.df, data_portal=self.data_portal)
 
     def test_minute_data(self):
         source = RandomWalkSource(freq='minute',
@@ -858,7 +880,7 @@ class TestTransformAlgorithm(TestCase):
         algo = TestOrderInstantAlgorithm(sim_params=self.sim_params,
                                          env=self.env,
                                          instant_fill=True)
-        algo.run(source)
+        algo.run(source, data_portal=self.data_portal)
 
 
 class TestPositions(TestCase):
@@ -892,7 +914,7 @@ class TestPositions(TestCase):
     def test_empty_portfolio(self):
         algo = EmptyPositionsAlgorithm(sim_params=self.sim_params,
                                        env=self.env)
-        daily_stats = algo.run(self.df)
+        daily_stats = algo.run(self.df, data_portal=self.data_portal)
 
         expected_position_count = [
             0,  # Before entering the first position
@@ -910,7 +932,7 @@ class TestPositions(TestCase):
         algo = AmbitiousStopLimitAlgorithm(sid=1,
                                            sim_params=self.sim_params,
                                            env=self.env)
-        daily_stats = algo.run(self.source)
+        daily_stats = algo.run(self.source, data_portal=self.data_portal)
 
         # Verify that possitions are empty for all dates.
         empty_positions = daily_stats.positions.map(lambda x: len(x) == 0)
@@ -966,20 +988,20 @@ class TestAlgoScript(TestCase):
     def test_noop(self):
         algo = TradingAlgorithm(initialize=initialize_noop,
                                 handle_data=handle_data_noop)
-        algo.run(self.df)
+        algo.run(self.df, data_portal=self.data_portal)
 
     def test_noop_string(self):
         algo = TradingAlgorithm(script=noop_algo)
-        algo.run(self.df)
+        algo.run(self.df, data_portal=self.data_portal)
 
     def test_api_calls(self):
         algo = TradingAlgorithm(initialize=initialize_api,
                                 handle_data=handle_data_api)
-        algo.run(self.df)
+        algo.run(self.df, data_portal=self.data_portal)
 
     def test_api_calls_string(self):
         algo = TradingAlgorithm(script=api_algo)
-        algo.run(self.df)
+        algo.run(self.df, data_portal=self.data_portal)
 
     def test_api_get_environment(self):
         platform = 'zipline'
@@ -988,7 +1010,7 @@ class TestAlgoScript(TestCase):
         algo = TradingAlgorithm(script=api_get_environment_algo,
                                 equities_metadata=metadata,
                                 platform=platform)
-        algo.run(self.df)
+        algo.run(self.df, data_portal=self.data_portal)
         self.assertEqual(algo.environment, platform)
 
     def test_api_symbol(self):
@@ -996,7 +1018,7 @@ class TestAlgoScript(TestCase):
         metadata = {3: {'symbol': 'TEST'}}
         algo = TradingAlgorithm(script=api_symbol_algo,
                                 equities_metadata=metadata)
-        algo.run(self.df)
+        algo.run(self.df, data_portal=self.data_portal)
 
     def test_fixed_slippage(self):
         # verify order -> transaction -> portfolio position.
@@ -1205,7 +1227,7 @@ def handle_data(context, data):
                 env=self.env,
             )
             set_algo_instance(test_algo)
-            test_algo.run(self.source)
+            test_algo.run(self.source, data_portal=self.data_portal)
 
     def test_portfolio_in_init(self):
         """
@@ -1289,7 +1311,7 @@ def handle_data(context, data):
             sim_params=self.sim_params,
             env=self.env,
         )
-        output = algo.run(self.source)
+        output = algo.run(self.source, data_portal=self.data_portal)
         self.assertIsNot(output, None)
 
     def test_history_without_add(self):
@@ -1302,7 +1324,7 @@ def handle_data(context, data):
             sim_params=self.sim_params,
             env=self.env,
         )
-        algo.run(self.source)
+        algo.run(self.source, data_portal=self.data_portal)
 
         self.assertIsNotNone(algo.history_container)
         self.assertEqual(algo.history_container.buffer_panel.window_length, 1)
@@ -1317,7 +1339,7 @@ def handle_data(context, data):
             sim_params=self.sim_params,
             env=self.env,
         )
-        algo.run(self.source)
+        algo.run(self.source, data_portal=self.data_portal)
 
         self.assertIsNotNone(algo.history_container)
         self.assertEqual(algo.history_container.buffer_panel.window_length, 1)
@@ -1386,7 +1408,7 @@ class TestGetDatetime(TestCase):
             sim_params=sim_params,
             env=self.env,
         )
-        algo.run(source)
+        algo.run(source, data_portal=self.data_portal)
         self.assertFalse(algo.first_bar)
 
 
@@ -1427,7 +1449,7 @@ class TestTradingControls(TestCase):
 
         algo._handle_data = handle_data
         with self.assertRaises(expected_exc) if expected_exc else nullctx():
-            algo.run(self.source)
+            algo.run(self.source, data_portal=self.data_portal)
         self.assertEqual(algo.order_count, expected_order_count)
         self.source.rewind()
 
@@ -1686,7 +1708,7 @@ class TestTradingControls(TestCase):
                                 handle_data=handle_data,
                                 sim_params=self.sim_params,
                                 env=self.env)
-        algo.run(self.source)
+        algo.run(self.source, data_portal=self.data_portal)
         self.source.rewind()
 
     def test_asset_date_bounds(self):
@@ -1701,7 +1723,7 @@ class TestTradingControls(TestCase):
             sim_params=self.sim_params,
             env=temp_env,
         )
-        algo.run(df_source)
+        algo.run(df_source, data_portal=self.data_portal)
 
         # Run the algorithm with a sid that has already ended
         temp_env = TradingEnvironment()
@@ -1714,7 +1736,7 @@ class TestTradingControls(TestCase):
             env=temp_env,
         )
         with self.assertRaises(TradingControlViolation):
-            algo.run(df_source)
+            algo.run(df_source, data_portal=self.data_portal)
 
         # Run the algorithm with a sid that has not started
         temp_env = TradingEnvironment()
@@ -1727,7 +1749,7 @@ class TestTradingControls(TestCase):
             env=temp_env,
         )
         with self.assertRaises(TradingControlViolation):
-            algo.run(df_source)
+            algo.run(df_source, data_portal=self.data_portal)
 
         # Run the algorithm with a sid that starts on the first day and
         # ends on the last day of the algorithm's parameters (*not* an error).
@@ -1740,7 +1762,7 @@ class TestTradingControls(TestCase):
             sim_params=self.sim_params,
             env=temp_env,
         )
-        algo.run(df_source)
+        algo.run(df_source, data_portal=self.data_portal)
 
 
 class TestAccountControls(TestCase):
@@ -1749,8 +1771,24 @@ class TestAccountControls(TestCase):
     def setUpClass(cls):
         cls.sidint = 133
         cls.env = TradingEnvironment()
-        cls.env.write_data(
-            equities_identifiers=[cls.sidint]
+        cls.sim_params = factory.create_simulation_parameters(
+            num_days=4, env=cls.env
+        )
+
+        cls.env.write_data(equities_data={
+            133: {
+                'start_date': cls.sim_params.period_start,
+                'end_date': cls.sim_params.period_end
+            }
+        })
+
+        cls.tempdir = TempDirectory()
+
+        cls.data_portal = create_data_portal(
+            cls.env,
+            cls.tempdir,
+            cls.sim_params,
+            [cls.sidint]
         )
 
     @classmethod
@@ -1782,7 +1820,7 @@ class TestAccountControls(TestCase):
 
         algo._handle_data = handle_data
         with self.assertRaises(expected_exc) if expected_exc else nullctx():
-            algo.run(self.source)
+            algo.run(self.source, data_portal=self.data_portal)
         self.source.rewind()
 
     def check_algo_succeeds(self, algo, handle_data):
@@ -1847,7 +1885,7 @@ class TestClosePosAlgo(TestCase):
         # Check results
         expected_positions = [0, 1, 1, 0]
         expected_pnl = [0, 0, 1, 2]
-        results = algo.run(data)
+        results = algo.run(data, data_portal=self.data_portal)
         self.check_algo_positions(results, expected_positions)
         self.check_algo_pnl(results, expected_pnl)
 
@@ -1862,7 +1900,7 @@ class TestClosePosAlgo(TestCase):
         # Check results
         expected_positions = [0, 1, 1, 0]
         expected_pnl = [0, 0, 1, 2]
-        results = algo.run(data)
+        results = algo.run(data, data_portal=self.data_portal)
         self.check_algo_pnl(results, expected_pnl)
         self.check_algo_positions(results, expected_positions)
 
@@ -1876,7 +1914,7 @@ class TestClosePosAlgo(TestCase):
         data = DataPanelSource(self.no_close_panel)
 
         # Check results
-        results = algo.run(data)
+        results = algo.run(data, data_portal=self.data_portal)
 
         expected_positions = [0, 1, 1, 0]
         self.check_algo_positions(results, expected_positions)
@@ -1924,7 +1962,7 @@ class TestFutureFlip(TestCase):
                               instant_fill=True)
         data = DataPanelSource(self.trades_panel)
 
-        results = algo.run(data)
+        results = algo.run(data, data_portal=self.data_portal)
 
         expected_positions = [1, -1, 0]
         self.check_algo_positions(results, expected_positions)
@@ -1975,5 +2013,5 @@ class TestTradingAlgorithm(TestCase):
 
         algo = TradingAlgorithm(initialize=initialize, handle_data=handle_data,
                                 analyze=analyze)
-        results = algo.run(self.panel)
+        results = algo.run(self.panel, data_portal=self.data_portal)
         self.assertIs(results, self.perf_ref)

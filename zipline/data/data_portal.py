@@ -12,7 +12,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-
+from collections import deque
 from logbook import Logger
 
 log = Logger('DataPortal')
@@ -44,6 +44,16 @@ class DataPortal(object):
         self._equity_minute_reader = equity_minute_reader
         self._future_daily_reader = future_daily_reader
         self._future_minute_reader = future_minute_reader
+
+        self._trade_bars = {}
+
+    def process_trade(self, trade_bar):
+        sid = trade_bar.sid
+        try:
+            bars = self._trade_bars[sid]
+        except KeyError:
+            bars = self._trade_bars[sid] = deque(maxlen=2)
+        bars.append(trade_bar)
 
     def get_previous_value(self, asset, field, dt, data_frequency):
         """

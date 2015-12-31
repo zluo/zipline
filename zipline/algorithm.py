@@ -1,5 +1,5 @@
 #
-# Copyright 2014 Quantopian, Inc.
+# Copyright 2015 Quantopian, Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -226,9 +226,7 @@ class TradingAlgorithm(object):
         else:
             self.sim_params.update_internal_from_env(self.trading_environment)
 
-        # Build a perf_tracker
-        self.perf_tracker = PerformanceTracker(sim_params=self.sim_params,
-                                               env=self.trading_environment)
+        self.perf_tracker = None
 
         # Pull in the environment's new AssetFinder for quick reference
         self.asset_finder = self.trading_environment.asset_finder
@@ -243,9 +241,6 @@ class TradingAlgorithm(object):
         self.blotter = kwargs.pop('blotter', None)
         if not self.blotter:
             self.blotter = Blotter()
-
-        # Set the dt initally to the period start by forcing it to change
-        self.on_dt_changed(self.sim_params.period_start)
 
         # The symbol lookup date specifies the date to use when resolving
         # symbols to sids, and can be set using set_symbol_lookup_date()
@@ -466,21 +461,29 @@ class TradingAlgorithm(object):
             # HACK: When running with the `run` method, we set perf_tracker to
             # None so that it will be overwritten here.
             self.perf_tracker = PerformanceTracker(
-                sim_params=sim_params, env=self.trading_environment
+                sim_params=sim_params,
+                env=self.trading_environment,
+                data_portal=self.data_portal
             )
 
-        self.portfolio_needs_update = True
-        self.account_needs_update = True
-        self.performance_needs_update = True
+            # Set the dt initially to the period start by forcing it to change.
+            self.on_dt_changed(self.sim_params.period_start)
 
         self.data_gen = self._create_data_generator(source_filter, sim_params)
 
-        self.trading_client = AlgorithmSimulator(self, sim_params)
+        self.trading_client = self._create_trading_client(sim_params)
 
         transact_method = transact_partial(self.slippage, self.commission)
         self.set_transact(transact_method)
 
         return self.trading_client.transform(self.data_gen)
+
+    def _create_trading_client(self, sim_params):
+        return AlgorithmSimulator(
+            self,
+            sim_params,
+            self.data_portal,
+        )
 
     def get_generator(self):
         """
@@ -494,7 +497,7 @@ class TradingAlgorithm(object):
     # the run method to the subclass, and refactor to put the
     # generator creation logic into get_generator.
     def run(self, source, overwrite_sim_params=True,
-            benchmark_return_source=None):
+            benchmark_return_source=None, data_portal=None):
         """Run the algorithm.
 
         :Arguments:
@@ -514,6 +517,8 @@ class TradingAlgorithm(object):
               Daily performance metrics such as returns, alpha etc.
 
         """
+        self.data_portal = data_portal
+        # Force a reset of the performance tracker, in case
 
         # Ensure that source is a DataSource object
         if isinstance(source, list):
@@ -1000,7 +1005,8 @@ class TradingAlgorithm(object):
     def updated_portfolio(self):
         if self.portfolio_needs_update:
             self._portfolio = \
-                self.perf_tracker.get_portfolio(self.performance_needs_update)
+                self.perf_tracker.get_portfolio(self.performance_needs_update,
+                                                self.datetime)
             self.portfolio_needs_update = False
             self.performance_needs_update = False
         return self._portfolio
@@ -1012,7 +1018,8 @@ class TradingAlgorithm(object):
     def updated_account(self):
         if self.account_needs_update:
             self._account = \
-                self.perf_tracker.get_account(self.performance_needs_update)
+                self.perf_tracker.get_account(self.performance_needs_update,
+                                              self.datetime)
             self.account_needs_update = False
             self.performance_needs_update = False
         return self._account

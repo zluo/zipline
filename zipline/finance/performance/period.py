@@ -132,13 +132,19 @@ class PerformancePeriod(object):
             self,
             starting_cash,
             asset_finder,
+            data_frequency,
+            data_portal,
             period_open=None,
             period_close=None,
             keep_transactions=True,
             keep_orders=False,
-            serialize_positions=True):
+            serialize_positions=True,
+            name=None):
 
         self.asset_finder = asset_finder
+        self.data_frequency = data_frequency
+
+        self._data_portal = data_portal
 
         self.period_open = period_open
         self.period_close = period_close
@@ -153,6 +159,8 @@ class PerformancePeriod(object):
         self.rollover()
         self.keep_transactions = keep_transactions
         self.keep_orders = keep_orders
+
+        self.name = name
 
         # An object to recycle via assigning new values
         # when returning portfolio information.
@@ -207,15 +215,46 @@ class PerformancePeriod(object):
     def adjust_field(self, field, value):
         setattr(self, field, value)
 
+    def _get_futures_payout_total(self, positions):
+        futures_payouts = []
+        for sid, pos in iteritems(positions):
+            asset = self.asset_finder.retrieve_asset(sid)
+            if isinstance(asset, Future):
+                old_price_dt = max(pos.last_sale_date, self.period_open)
+
+                if old_price_dt == pos.last_sale_date:
+                    continue
+
+                old_price = self._data_portal.get_previous_value(
+                    sid, 'close', old_price_dt, self.data_frequency
+                )
+
+                price = self._data_portal.get_spot_value(
+                    sid, 'close', self.period_close, self.data_frequency,
+                )
+
+                payout = (
+                    (price - old_price)
+                    *
+                    asset.contract_multiplier
+                    *
+                    pos.amount
+                )
+                futures_payouts.append(payout)
+
+        return sum(futures_payouts)
+
     def calculate_performance(self):
         pt = self.position_tracker
         pos_stats = pt.stats()
         self.ending_value = pos_stats.net_value
         self.ending_exposure = pos_stats.net_exposure
 
+        payouts = self._get_futures_payout_total(pt.positions)
+
         total_at_start = self.starting_cash + self.starting_value
         self.ending_cash = self.starting_cash + self.period_cash_flow
-        total_at_end = self.ending_cash + self.ending_value
+        total_at_end = self.ending_cash + self.ending_value + payouts
 
         self.pnl = total_at_end - total_at_start
         if total_at_start != 0:
@@ -435,6 +474,7 @@ class PerformancePeriod(object):
 
         state_dict['_portfolio_store'] = self._portfolio_store
         state_dict['_account_store'] = self._account_store
+        state_dict['data_frequency'] = self.data_frequency
 
         state_dict['processed_transactions'] = \
             dict(self.processed_transactions)

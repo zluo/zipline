@@ -18,8 +18,8 @@ from __future__ import division
 import logbook
 import numpy as np
 import pandas as pd
-from pandas.lib import checknull
 from collections import namedtuple
+
 try:
     # optional cython based OrderedDict
     from cyordereddict import OrderedDict
@@ -28,6 +28,7 @@ except ImportError:
 from six import iteritems, itervalues
 
 from zipline.protocol import Event, DATASOURCE_TYPE
+from zipline.finance.performance.position import Position
 from zipline.finance.transaction import Transaction
 from zipline.utils.serialization_utils import (
     VERSION_LABEL
@@ -123,8 +124,10 @@ def calc_gross_value(long_value, short_value):
 
 class PositionTracker(object):
 
-    def __init__(self, asset_finder):
+    def __init__(self, asset_finder, data_portal, data_frequency):
         self.asset_finder = asset_finder
+
+        self._data_portal = data_portal
 
         # sid => position object
         self.positions = positiondict()
@@ -140,6 +143,8 @@ class PositionTracker(object):
         # Dict, keyed on dates, that contains lists of close position events
         # for any Assets in this tracker's positions
         self._auto_close_position_sids = {}
+
+        self.data_frequency = data_frequency
 
     def _update_asset(self, sid):
         try:
@@ -222,26 +227,6 @@ class PositionTracker(object):
         while past_asset_end_dates:
             self._auto_close_position_sids.pop(past_asset_end_dates.pop())
 
-    def update_last_sale(self, event):
-        # NOTE, PerformanceTracker already vetted as TRADE type
-        sid = event.sid
-        if sid not in self.positions:
-            return 0
-
-        price = event.price
-
-        if checknull(price):
-            return 0
-
-        pos = self.positions[sid]
-        old_price = pos.last_sale_price
-        pos.last_sale_date = event.dt
-        pos.last_sale_price = price
-
-        # Calculate cash adjustment on assets with multipliers
-        return ((price - old_price) * self._position_payout_multipliers[sid]
-                * pos.amount)
-
     def update_positions(self, positions):
         # update positions in batch
         self.positions.update(positions)
@@ -250,17 +235,21 @@ class PositionTracker(object):
 
     def update_position(self, sid, amount=None, last_sale_price=None,
                         last_sale_date=None, cost_basis=None):
-        pos = self.positions[sid]
+        if sid not in self.positions:
+            position = Position(sid)
+            self.positions[sid] = position
+        else:
+            position = self.positions[sid]
 
         if amount is not None:
-            pos.amount = amount
+            position.amount = amount
             self._update_asset(sid=sid)
         if last_sale_price is not None:
-            pos.last_sale_price = last_sale_price
+            position.last_sale_price = last_sale_price
         if last_sale_date is not None:
-            pos.last_sale_date = last_sale_date
+            position.last_sale_date = last_sale_date
         if cost_basis is not None:
-            pos.cost_basis = cost_basis
+            position.cost_basis = cost_basis
 
     def execute_transaction(self, txn):
         # Update Position
@@ -408,6 +397,12 @@ class PositionTracker(object):
             if pos.amount != 0:
                 positions.append(pos.to_dict())
         return positions
+
+    def sync_last_sale_prices(self, dt):
+        data_portal = self._data_portal
+        for sid, position in iteritems(self.positions):
+            position.last_sale_price = data_portal.get_spot_value(
+                sid, 'close', dt, self.data_frequency)
 
     def stats(self):
         amounts = []

@@ -82,8 +82,7 @@ class PerformanceTracker(object):
     """
     Tracks the performance of the algorithm.
     """
-    def __init__(self, sim_params, env):
-
+    def __init__(self, sim_params, env, data_portal):
         self.sim_params = sim_params
         self.env = env
 
@@ -106,17 +105,24 @@ class PerformanceTracker(object):
 
         self.trading_days = all_trading_days[mask]
 
+        self._data_portal = data_portal
+        if data_portal is not None:
+            self._adjustment_reader = data_portal._adjustment_reader
+        else:
+            self._adjustment_reader = None
         self.dividend_frame = pd.DataFrame()
         self._dividend_count = 0
 
-        self.position_tracker = PositionTracker(asset_finder=env.asset_finder)
+        self.position_tracker = PositionTracker(
+            asset_finder=env.asset_finder,
+            data_portal=data_portal,
+            data_frequency=self.sim_params.data_frequency)
 
         if self.emission_rate == 'daily':
             self.all_benchmark_returns = pd.Series(
                 index=self.trading_days)
             self.cumulative_risk_metrics = \
                 risk.RiskMetricsCumulative(self.sim_params, self.env)
-
         elif self.emission_rate == 'minute':
             self.all_benchmark_returns = pd.Series(index=pd.date_range(
                 self.sim_params.first_open, self.sim_params.last_close,
@@ -131,6 +137,8 @@ class PerformanceTracker(object):
         self.cumulative_performance = PerformancePeriod(
             # initial cash is your capital base.
             starting_cash=self.capital_base,
+            data_frequency=self.sim_params.data_frequency,
+            data_portal=data_portal,
             # the cumulative period will be calculated over the entire test.
             period_open=self.period_start,
             period_close=self.period_end,
@@ -148,6 +156,8 @@ class PerformanceTracker(object):
         self.todays_performance = PerformancePeriod(
             # initial cash is your capital base.
             starting_cash=self.capital_base,
+            data_frequency=self.sim_params.data_frequency,
+            data_portal=data_portal,
             # the daily period will be calculated for the market day
             period_open=self.market_open,
             period_close=self.market_close,
@@ -232,19 +242,21 @@ class PerformanceTracker(object):
             self.dividend_frame.sid != sid
         ]
 
+    def get_portfolio(self, performance_needs_update, dt):
+        if performance_needs_update:
+            self.position_tracker.sync_last_sale_prices(dt)
+            self.update_performance()
+            self.account_needs_update = True
+        return self.cumulative_performance.as_portfolio()
+
     def update_performance(self):
         # calculate performance as of last trade
         self.cumulative_performance.calculate_performance()
         self.todays_performance.calculate_performance()
 
-    def get_portfolio(self, performance_needs_update):
+    def get_account(self, performance_needs_update, dt):
         if performance_needs_update:
-            self.update_performance()
-            self.account_needs_update = True
-        return self.cumulative_performance.as_portfolio()
-
-    def get_account(self, performance_needs_update):
-        if performance_needs_update:
+            self.position_tracker.sync_last_sale_prices(dt)
             self.update_performance()
             self.account_needs_update = True
         if self.account_needs_update:
@@ -283,22 +295,11 @@ class PerformanceTracker(object):
 
         return _dict
 
-    def _handle_event_price(self, event):
-        # updates last sale, and pays out a cash adjustment if applicable
-        cash_adjustment = self.position_tracker.update_last_sale(event)
-        if cash_adjustment != 0:
-            self.cumulative_performance.handle_cash_payment(cash_adjustment)
-            self.todays_performance.handle_cash_payment(cash_adjustment)
-
-    def process_trade(self, event):
-        self._handle_event_price(event)
-
-    def process_transaction(self, event):
-        self._handle_event_price(event)
+    def process_transaction(self, transaction):
         self.txn_count += 1
-        self.position_tracker.execute_transaction(event)
-        self.cumulative_performance.handle_execution(event)
-        self.todays_performance.handle_execution(event)
+        self.position_tracker.execute_transaction(transaction)
+        self.cumulative_performance.handle_execution(transaction)
+        self.todays_performance.handle_execution(transaction)
 
     def process_dividend(self, dividend):
 
@@ -344,12 +345,6 @@ class PerformanceTracker(object):
         self.all_benchmark_returns[midnight] = event.returns
 
     def process_close_position(self, event):
-
-        # CLOSE_POSITION events that contain prices that must be handled as
-        # a final trade event
-        if 'price' in event:
-            self.process_trade(event)
-
         txn = self.position_tracker.\
             maybe_create_close_position_transaction(event)
         if txn:
@@ -427,9 +422,10 @@ class PerformanceTracker(object):
             A tuple of the minute perf packet and daily perf packet.
             If the market day has not ended, the daily perf packet is None.
         """
+        self.position_tracker.sync_last_sale_prices(dt)
         self.update_performance()
         todays_date = normalize_date(dt)
-        account = self.get_account(False)
+        account = self.get_account(False, dt)
 
         bench_returns = self.all_benchmark_returns.loc[todays_date:dt]
         # cumulative returns
@@ -445,27 +441,31 @@ class PerformanceTracker(object):
         # if this is the close, update dividends for the next day.
         # Return the performance tuple
         if dt == self.market_close:
-            return (minute_packet, self._handle_market_close(todays_date))
+            return minute_packet, self._handle_market_close(todays_date)
         else:
-            return (minute_packet, None)
+            return minute_packet, None
 
-    def handle_market_close_daily(self):
+    def handle_market_close_daily(self, dt):
         """
         Function called after handle_data when running with daily emission
         rate.
         """
+        self.position_tracker.sync_last_sale_prices(dt)
         self.update_performance()
         completed_date = self.day
-        account = self.get_account(False)
+        account = self.get_account(False, dt)
 
-        # update risk metrics for cumulative performance
+        benchmark_value = self.all_benchmark_returns[completed_date]
+
         self.cumulative_risk_metrics.update(
             completed_date,
             self.todays_performance.returns,
-            self.all_benchmark_returns[completed_date],
+            benchmark_value,
             account.leverage)
 
-        return self._handle_market_close(completed_date)
+        daily_packet = self._handle_market_close(completed_date)
+
+        return daily_packet
 
     def _handle_market_close(self, completed_date):
 
