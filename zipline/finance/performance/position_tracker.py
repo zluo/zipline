@@ -402,7 +402,7 @@ class PositionTracker(object):
         data_portal = self._data_portal
         for sid, position in iteritems(self.positions):
             position.last_sale_price = data_portal.get_spot_value(
-                sid, 'close', dt, self.data_frequency)
+                sid, 'price', dt, self.data_frequency)
 
     def stats(self):
         amounts = []

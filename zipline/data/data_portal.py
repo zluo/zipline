@@ -93,11 +93,12 @@ class DataPortal(object):
         field = EVENT_FIELD_OVERRIDES.get(field, field)
         try:
             asset_bars = self._trade_bars[asset]
-            if len(asset_bars) >= 1:
-                return getattr(asset_bars[0], field)
-            else:
-                return np.nan
         except KeyError:
+            return np.nan
+
+        if len(asset_bars) >= 1:
+            return getattr(asset_bars[0], field)
+        else:
             return np.nan
 
     def get_spot_value(self, asset, field, dt, data_frequency):
@@ -128,7 +129,10 @@ class DataPortal(object):
         """
         field = EVENT_FIELD_OVERRIDES.get(field, field)
         try:
-            return getattr(self._trade_bars[asset][-1], field)
+            try:
+                return getattr(self._trade_bars[asset][-1], field)
+            except AttributeError:
+                return np.nan
         except KeyError:
             return np.nan
 

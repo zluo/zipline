@@ -1169,6 +1169,7 @@ def handle_data(context, data):
 
         self.zipline_test_config['algorithm'] = test_algo
         self.zipline_test_config['trade_count'] = 200
+        self.zipline_test_config['data_portal'] = self.data_portal
 
         zipline = simfactory.create_test_zipline(
             **self.zipline_test_config)
