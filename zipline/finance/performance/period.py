@@ -173,6 +173,8 @@ class PerformancePeriod(object):
         # keyed on sid
         self._execution_cash_flow_multipliers = {}
 
+        self._futures_previous_last_sale = {}
+
     _position_tracker = None
 
     @property
@@ -215,46 +217,15 @@ class PerformancePeriod(object):
     def adjust_field(self, field, value):
         setattr(self, field, value)
 
-    def _get_futures_payout_total(self, positions):
-        futures_payouts = []
-        for sid, pos in iteritems(positions):
-            asset = self.asset_finder.retrieve_asset(sid)
-            if isinstance(asset, Future):
-                old_price_dt = max(pos.last_sale_date, self.period_open)
-
-                if old_price_dt == pos.last_sale_date:
-                    continue
-
-                old_price = self._data_portal.get_previous_value(
-                    sid, 'price', old_price_dt, self.data_frequency
-                )
-
-                price = self._data_portal.get_spot_value(
-                    sid, 'price', self.period_close, self.data_frequency,
-                )
-
-                payout = (
-                    (price - old_price)
-                    *
-                    asset.contract_multiplier
-                    *
-                    pos.amount
-                )
-                futures_payouts.append(payout)
-
-        return sum(futures_payouts)
-
     def calculate_performance(self):
         pt = self.position_tracker
         pos_stats = pt.stats()
         self.ending_value = pos_stats.net_value
         self.ending_exposure = pos_stats.net_exposure
 
-        payouts = self._get_futures_payout_total(pt.positions)
-
         total_at_start = self.starting_cash + self.starting_value
         self.ending_cash = self.starting_cash + self.period_cash_flow
-        total_at_end = self.ending_cash + self.ending_value + payouts
+        total_at_end = self.ending_cash + self.ending_value
 
         self.pnl = total_at_end - total_at_start
         if total_at_start != 0:

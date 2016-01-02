@@ -123,6 +123,7 @@ class PerformanceTracker(object):
                 index=self.trading_days)
             self.cumulative_risk_metrics = \
                 risk.RiskMetricsCumulative(self.sim_params, self.env)
+
         elif self.emission_rate == 'minute':
             self.all_benchmark_returns = pd.Series(index=pd.date_range(
                 self.sim_params.first_open, self.sim_params.last_close,
@@ -345,6 +346,12 @@ class PerformanceTracker(object):
         self.all_benchmark_returns[midnight] = event.returns
 
     def process_close_position(self, event):
+
+        # CLOSE_POSITION events that contain prices that must be handled as
+        # a final trade event
+        if 'price' in event:
+            self.data_portal.process_trade(event)
+
         txn = self.position_tracker.\
             maybe_create_close_position_transaction(event)
         if txn:
