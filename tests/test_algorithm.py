@@ -1315,6 +1315,15 @@ class TestHistory(TestCase):
         )
         cls.env.write_data(equities_identifiers=[0, 1])
 
+        cls.tempdir = TempDirectory()
+
+        cls.data_portal = create_data_portal(
+            cls.env,
+            cls.tempdir,
+            cls.sim_params,
+            [0, 1]
+        )
+
     @classmethod
     def tearDownClass(cls):
         del cls.env
@@ -1380,16 +1389,30 @@ class TestGetDatetime(TestCase):
         cls.env = TradingEnvironment()
         cls.env.write_data(equities_identifiers=[0, 1])
 
+        setup_logger(cls)
+
+        cls.sim_params = factory.create_simulation_parameters(
+            data_frequency='minute',
+            env=cls.env,
+            start=to_utc('2014-01-02 9:31'),
+            end=to_utc('2014-01-03 9:31')
+        )
+
+        cls.tempdir = TempDirectory()
+
+        cls.data_portal = create_data_portal(
+            cls.env,
+            cls.tempdir,
+            cls.sim_params,
+            [1]
+        )
+
     @classmethod
     def tearDownClass(cls):
         del cls.env
-
-    def setUp(self):
-        setup_logger(self)
-
-    def tearDown(self):
-        teardown_logger(self)
-
+        teardown_logger(cls)
+        cls.tempdir.cleanup()
+        
     @parameterized.expand(
         [
             ('default', None,),
@@ -1987,8 +2010,23 @@ class TestClosePosAlgo(TestCase):
 
 class TestFutureFlip(TestCase):
     def setUp(self):
+        self.tempdir = TempDirectory()
         self.env = TradingEnvironment()
         self.days = self.env.trading_days[:4]
+        self.sid = 1
+
+        self.sim_params = factory.create_simulation_parameters(
+            start=self.days[0],
+            end=self.days[-1]
+        )
+
+        self.data_portal = create_data_portal(
+            self.env,
+            self.tempdir,
+            self.sim_params,
+            [self.sid]
+        )
+        
         self.trades_panel = pd.Panel({1: pd.DataFrame({
             'price': [1, 2, 4], 'volume': [1e9, 1e9, 1e9],
             'type': [DATASOURCE_TYPE.TRADE,
@@ -1997,10 +2035,13 @@ class TestFutureFlip(TestCase):
             index=self.days[:3])
         })
 
+    def tearDown(self):
+        self.tempdir.cleanup()
+
     def test_flip_algo(self):
-        metadata = {1: {'symbol': 'TEST',
-                        'end_date': self.days[3],
-                        'contract_multiplier': 5}}
+        metadata = {self.sid: {'symbol': 'TEST',
+                               'end_date': self.days[3],
+                               'contract_multiplier': 5}}
         self.env.write_data(futures_data=metadata)
 
         algo = FutureFlipAlgo(sid=1, amount=1, env=self.env,

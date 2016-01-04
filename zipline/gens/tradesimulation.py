@@ -310,7 +310,7 @@ class AlgorithmSimulator(object):
                         perf_process_transaction(txn)
                     if order is not None:
                         perf_process_order(order)
-                data_portal_process_trade(trade)
+                perf_process_trade(trade)
 
         if benchmark_event_occurred:
             return self.generate_messages(dt)
