@@ -55,51 +55,7 @@ class DataPortal(object):
         self._trade_bars = {}
 
     def process_trade(self, trade_bar):
-        sid = trade_bar.sid
-        try:
-            bars = self._trade_bars[sid]
-        except KeyError:
-            bars = self._trade_bars[sid] = deque(maxlen=2)
-        bars.append(trade_bar)
-
-    def get_previous_value(self, asset, field, dt, data_frequency):
-        """
-        Given an asset and a column and a dt, returns the previous value for
-        the same asset/column pair.  If this data portal is in minute mode,
-        it's the previous minute value, otherwise it's the previous day's
-        value.
-
-        Parameters
-        ---------
-        asset : Asset
-            The asset whose data is desired.
-
-        field: string
-            The desired field of the asset.  Valid values are "open",
-            "open_price", "high", "low", "close", "close_price", "volume", and
-            "price".
-
-        dt: pd.Timestamp
-            The timestamp from which to go back in time one slot.
-
-        data_frequency: string
-            The frequency of the data to query; i.e. whether the data is
-            'daily' or 'minute' bars
-
-        Returns
-        -------
-        The value of the desired field at the desired time.
-        """
-        field = EVENT_FIELD_OVERRIDES.get(field, field)
-        try:
-            asset_bars = self._trade_bars[asset]
-        except KeyError:
-            return np.nan
-
-        if len(asset_bars) >= 1:
-            return getattr(asset_bars[0], field)
-        else:
-            return np.nan
+        self._trade_bars[trade_bar.sid] = trade_bar
 
     def get_spot_value(self, asset, field, dt, data_frequency):
         """
@@ -130,7 +86,7 @@ class DataPortal(object):
         field = EVENT_FIELD_OVERRIDES.get(field, field)
         try:
             try:
-                return getattr(self._trade_bars[asset][-1], field)
+                return getattr(self._trade_bars[asset], field)
             except AttributeError:
                 return np.nan
         except KeyError:

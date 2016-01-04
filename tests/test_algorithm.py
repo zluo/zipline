@@ -29,9 +29,7 @@ from zipline.utils.api_support import ZiplineAPI
 from zipline.utils.control_flow import nullctx
 from zipline.utils.test_utils import (
     setup_logger,
-    teardown_logger,
-    FakeDataPortal,
-)
+    teardown_logger)
 import zipline.utils.factory as factory
 import zipline.utils.simfactory as simfactory
 
@@ -2045,7 +2043,6 @@ class TestFutureFlip(TestCase):
             self.sim_params,
             [self.sid]
         )
-        
         self.trades_panel = pd.Panel({1: pd.DataFrame({
             'price': [1, 2, 4], 'volume': [1e9, 1e9, 1e9],
             'type': [DATASOURCE_TYPE.TRADE,
@@ -2105,6 +2102,10 @@ class TestTradingAlgorithm(TestCase):
                      DATASOURCE_TYPE.CLOSE_POSITION]},
             index=self.days)
         })
+        self.tempdir = TempDirectory()
+
+    def tearDown(self):
+        self.tempdir.cleanup()
 
     def test_analyze_called(self):
         self.perf_ref = None
@@ -2121,6 +2122,11 @@ class TestTradingAlgorithm(TestCase):
         algo = TradingAlgorithm(initialize=initialize, handle_data=handle_data,
                                 analyze=analyze)
 
-        data_portal = FakeDataPortal()
-        results = algo.run(self.panel, data_portal=data_portal)
+        self.data_portal = create_data_portal(
+            self.env,
+            self.tempdir,
+            algo.sim_params,
+            [1]
+        )
+        results = algo.run(self.panel, data_portal=self.data_portal)
         self.assertIs(results, self.perf_ref)
