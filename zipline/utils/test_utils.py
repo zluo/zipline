@@ -482,15 +482,6 @@ def create_data_portal(env, tempdir, sim_params, sids, sid_path_func=None,
     return DataPortal(env)
 
 
-class FakeDataPortal(object):
-
-    def __init__(self):
-        self._adjustment_reader = None
-
-    def process_trade(self, _):
-        pass
-
-
 class tmp_assets_db(object):
     """Create a temporary assets sqlite database.
     This is meant to be used as a context manager.

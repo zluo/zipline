@@ -37,6 +37,7 @@ from zipline.api import (
     pipeline_output,
     get_datetime,
 )
+from zipline.data.data_portal import DataPortal
 from zipline.errors import (
     AttachPipelineAfterInitialize,
     PipelineOutputDuringInitialize,
@@ -132,6 +133,8 @@ class ClosesOnly(TestCase):
             dtype=float,
         )
 
+        self.data_portal = DataPortal(self.env)
+
         # Add a split for 'A' on its second date.
         self.split_asset = self.assets[0]
         self.split_date = self.split_asset.start_date + trading_day
@@ -189,7 +192,7 @@ class ClosesOnly(TestCase):
         )
 
         with self.assertRaises(AttachPipelineAfterInitialize):
-            algo.run(source=self.closes)
+            algo.run(source=self.closes, data_portal=self.data_portal)
 
         def barf(context, data):
             raise AssertionError("Shouldn't make it past before_trading_start")
@@ -206,7 +209,7 @@ class ClosesOnly(TestCase):
         )
 
         with self.assertRaises(AttachPipelineAfterInitialize):
-            algo.run(source=self.closes)
+            algo.run(source=self.closes, data_portal=self.data_portal)
 
     def test_pipeline_output_after_initialize(self):
         """
@@ -235,7 +238,7 @@ class ClosesOnly(TestCase):
         )
 
         with self.assertRaises(PipelineOutputDuringInitialize):
-            algo.run(source=self.closes)
+            algo.run(source=self.closes, data_portal=self.data_portal)
 
     def test_get_output_nonexistent_pipeline(self):
         """
@@ -263,7 +266,7 @@ class ClosesOnly(TestCase):
         )
 
         with self.assertRaises(NoSuchPipeline):
-            algo.run(source=self.closes)
+            algo.run(source=self.closes, data_portal=self.data_portal)
 
     @parameterized.expand([('default', None),
                            ('day', 1),
@@ -314,7 +317,8 @@ class ClosesOnly(TestCase):
 
         # Run for a week in the middle of our data.
         algo.run(source=self.closes.loc[self.first_asset_start:
-                                        self.last_asset_end])
+                                        self.last_asset_end],
+                 data_portal=self.data_portal)
 
 
 class MockDailyBarSpotReader(object):
@@ -560,9 +564,12 @@ class PipelineAlgorithmTestCase(TestCase):
             env=self.env,
         )
 
+        data_portal = DataPortal(self.env)
+
         algo.run(
             source=self.make_source(),
             # Yes, I really do want to use the start and end dates I passed to
             # TradingAlgorithm.
             overwrite_sim_params=False,
+            data_portal=data_portal,
         )

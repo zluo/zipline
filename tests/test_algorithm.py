@@ -670,23 +670,33 @@ class TestMiscellaneousAPI(TestCase):
 
 class TestTransformAlgorithm(TestCase):
 
-    @classmethod
-    def setUpClass(cls):
-        cls.env = TradingEnvironment()
-        cls.env.write_data(equities_identifiers=[0, 1, 133])
-
-        futures_metadata = {0: {'contract_multiplier': 10}}
-        cls.futures_env = TradingEnvironment()
-        cls.futures_env.write_data(futures_data=futures_metadata)
-
-    @classmethod
-    def tearDownClass(cls):
-        del cls.env
-
     def setUp(self):
-        setup_logger(self)
+        self.env = TradingEnvironment()
         self.sim_params = factory.create_simulation_parameters(num_days=4,
                                                                env=self.env)
+        self.sids = [0, 1, 133]
+        self.tempdir = TempDirectory()
+
+        futures_metadata = {3: {'contract_multiplier': 10}}
+        equities_metadata = {}
+
+        for sid in self.sids:
+            equities_metadata[sid] = {
+                'start_date': self.sim_params.period_start,
+                'end_date': self.sim_params.period_end
+            }
+
+        self.env.write_data(equities_data=equities_metadata,
+                            futures_data=futures_metadata)
+
+        self.data_portal = create_data_portal(
+            self.env,
+            self.tempdir,
+            self.sim_params,
+            self.sids,
+        )
+
+        setup_logger(self)
 
         trade_history = factory.create_trade_history(
             133,
@@ -707,7 +717,9 @@ class TestTransformAlgorithm(TestCase):
             factory.create_test_panel_source(self.sim_params, self.env)
 
     def tearDown(self):
+        del self.env
         teardown_logger(self)
+        self.tempdir.cleanup()
 
     def test_source_as_input(self):
         algo = TestRegisterTransformAlgorithm(
@@ -842,11 +854,11 @@ class TestTransformAlgorithm(TestCase):
     def test_order_methods_for_future(self, algo_class):
         algo = algo_class(
             sim_params=self.sim_params,
-            env=self.futures_env,
+            env=self.env,
         )
 
-        # Ensure that the environment's asset 0 is a Future
-        asset_to_test = algo.sid(0)
+        # Ensure that the environment's asset 3 is a Future
+        asset_to_test = algo.sid(3)
         self.assertIsInstance(asset_to_test, Future)
 
         algo.run(self.df, data_portal=self.data_portal)
@@ -1509,6 +1521,18 @@ class TestTradingControls(TestCase):
             env=self.env,
         )
 
+        self.tempdir = TempDirectory()
+
+        self.data_portal = create_data_portal(
+            self.env,
+            self.tempdir,
+            self.sim_params,
+            [self.sid]
+        )
+
+    def tearDown(self):
+        self.tempdir.cleanup()
+
     def _check_algo(self,
                     algo,
                     handle_data,
@@ -1956,7 +1980,6 @@ class TestClosePosAlgo(TestCase):
             index=self.days)
         })
 
-
     def tearDown(self):
         self.tempdir.cleanup()
 
@@ -2122,11 +2145,11 @@ class TestTradingAlgorithm(TestCase):
         algo = TradingAlgorithm(initialize=initialize, handle_data=handle_data,
                                 analyze=analyze)
 
-        self.data_portal = create_data_portal(
+        data_portal = create_data_portal(
             self.env,
             self.tempdir,
             algo.sim_params,
             [1]
         )
-        results = algo.run(self.panel, data_portal=self.data_portal)
+        results = algo.run(self.panel, data_portal=data_portal)
         self.assertIs(results, self.perf_ref)
