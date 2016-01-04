@@ -1356,6 +1356,7 @@ class TestHistory(TestCase):
     @classmethod
     def tearDownClass(cls):
         del cls.env
+        cls.tempdir.cleanup()
 
     @property
     def source(self):
@@ -1886,6 +1887,7 @@ class TestAccountControls(TestCase):
     @classmethod
     def tearDownClass(cls):
         del cls.env
+        cls.tempdir.cleanup()
 
     def setUp(self):
         self.sim_params = factory.create_simulation_parameters(
