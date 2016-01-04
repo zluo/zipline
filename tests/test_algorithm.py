@@ -111,7 +111,7 @@ from zipline.utils.test_utils import (
 _multiprocess_can_split_ = False
 
 
-class TestRecordAlgorihtm(TestCase):
+class TestRecordAlgorithm(TestCase):
 
     @classmethod
     def setUpClass(cls):
