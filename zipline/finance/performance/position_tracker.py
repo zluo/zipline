@@ -235,7 +235,6 @@ class PositionTracker(object):
 
         pos = self.positions[sid]
         old_price = pos.last_sale_price
-        pos.last_sale_date = event.dt
         pos.last_sale_price = price
 
         # Calculate cash adjustment on assets with multipliers
@@ -249,7 +248,7 @@ class PositionTracker(object):
             self._update_asset(sid)
 
     def update_position(self, sid, amount=None, last_sale_price=None,
-                        last_sale_date=None, cost_basis=None):
+                        cost_basis=None):
         pos = self.positions[sid]
 
         if amount is not None:
@@ -257,8 +256,6 @@ class PositionTracker(object):
             self._update_asset(sid=sid)
         if last_sale_price is not None:
             pos.last_sale_price = last_sale_price
-        if last_sale_date is not None:
-            pos.last_sale_date = last_sale_date
         if cost_basis is not None:
             pos.cost_basis = cost_basis
 

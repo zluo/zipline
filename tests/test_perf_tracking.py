@@ -2081,9 +2081,9 @@ class TestPerformanceTracker(unittest.TestCase):
         pt = perf.PositionTracker(asset_finder=self.env.asset_finder)
         dt = pd.Timestamp("1984/03/06 3:00PM")
         pos1 = perf.Position(1, amount=np.float64(120.0),
-                             last_sale_date=dt, last_sale_price=3.4)
+                             last_sale_price=3.4)
         pos2 = perf.Position(2, amount=np.float64(-100.0),
-                             last_sale_date=dt, last_sale_price=3.4)
+                             last_sale_price=3.4)
         pt.update_positions({1: pos1, 2: pos2})
 
         event_type = DATASOURCE_TYPE.CLOSE_POSITION
@@ -2177,7 +2177,7 @@ class TestPosition(unittest.TestCase):
 
     def test_serialization(self):
         dt = pd.Timestamp("1984/03/06 3:00PM")
-        pos = perf.Position(10, amount=np.float64(120.0), last_sale_date=dt,
+        pos = perf.Position(10, amount=np.float64(120.0),
                             last_sale_price=3.4)
 
         p_string = dumps_with_persistent_ids(pos)
@@ -2230,10 +2230,8 @@ class TestPositionTracker(unittest.TestCase):
     def test_update_last_sale(self):
         pt = perf.PositionTracker(self.env.asset_finder)
         dt = pd.Timestamp("1984/03/06 3:00PM")
-        pos1 = perf.Position(1, amount=np.float64(100.0),
-                             last_sale_date=dt, last_sale_price=10)
-        pos3 = perf.Position(3, amount=np.float64(100.0),
-                             last_sale_date=dt, last_sale_price=10)
+        pos1 = perf.Position(1, amount=np.float64(100.0), last_sale_price=10)
+        pos3 = perf.Position(3, amount=np.float64(100.0), last_sale_price=10)
         pt.update_positions({1: pos1, 3: pos3})
 
         event1 = Event({'sid': 1,
@@ -2249,15 +2247,10 @@ class TestPositionTracker(unittest.TestCase):
 
     def test_position_values_and_exposures(self):
         pt = perf.PositionTracker(self.env.asset_finder)
-        dt = pd.Timestamp("1984/03/06 3:00PM")
-        pos1 = perf.Position(1, amount=np.float64(10.0),
-                             last_sale_date=dt, last_sale_price=10)
-        pos2 = perf.Position(2, amount=np.float64(-20.0),
-                             last_sale_date=dt, last_sale_price=10)
-        pos3 = perf.Position(3, amount=np.float64(30.0),
-                             last_sale_date=dt, last_sale_price=10)
-        pos4 = perf.Position(4, amount=np.float64(-40.0),
-                             last_sale_date=dt, last_sale_price=10)
+        pos1 = perf.Position(1, amount=np.float64(10.0), last_sale_price=10)
+        pos2 = perf.Position(2, amount=np.float64(-20.0), last_sale_price=10)
+        pos3 = perf.Position(3, amount=np.float64(30.0), last_sale_price=10)
+        pos4 = perf.Position(4, amount=np.float64(-40.0), last_sale_price=10)
         pt.update_positions({1: pos1, 2: pos2, 3: pos3, 4: pos4})
 
         # Test long-only methods
@@ -2282,11 +2275,8 @@ class TestPositionTracker(unittest.TestCase):
 
     def test_serialization(self):
         pt = perf.PositionTracker(self.env.asset_finder)
-        dt = pd.Timestamp("1984/03/06 3:00PM")
-        pos1 = perf.Position(1, amount=np.float64(120.0),
-                             last_sale_date=dt, last_sale_price=3.4)
-        pos3 = perf.Position(3, amount=np.float64(100.0),
-                             last_sale_date=dt, last_sale_price=3.4)
+        pos1 = perf.Position(1, amount=np.float64(120.0), last_sale_price=3.4)
+        pos3 = perf.Position(3, amount=np.float64(100.0), last_sale_price=3.4)
 
         pt.update_positions({1: pos1, 3: pos3})
         p_string = dumps_with_persistent_ids(pt)

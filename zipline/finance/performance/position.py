@@ -51,14 +51,12 @@ log = logbook.Logger('Performance')
 
 class Position(object):
 
-    def __init__(self, sid, amount=0, cost_basis=0.0,
-                 last_sale_price=0.0, last_sale_date=None):
+    def __init__(self, sid, amount=0, cost_basis=0.0, last_sale_price=0.0):
 
         self.sid = sid
         self.amount = amount
         self.cost_basis = cost_basis  # per share
         self.last_sale_price = last_sale_price
-        self.last_sale_date = last_sale_date
 
     def earn_dividend(self, dividend):
         """
@@ -155,11 +153,7 @@ class Position(object):
                 total_cost = prev_cost + txn_cost
                 self.cost_basis = total_cost / total_shares
 
-            # Update the last sale price if txn is
-            # best data we have so far
-            if self.last_sale_date is None or txn.dt > self.last_sale_date:
-                self.last_sale_price = txn.price
-                self.last_sale_date = txn.dt
+            self.last_sale_price = txn.price
 
         self.amount = total_shares
 
