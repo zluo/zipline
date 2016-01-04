@@ -306,9 +306,9 @@ class PerformanceTracker(object):
     def process_transaction(self, transaction):
         self._handle_event_price(transaction)
         self.txn_count += 1
-        self.position_tracker.execute_transaction(transaction)
         self.cumulative_performance.handle_execution(transaction)
         self.todays_performance.handle_execution(transaction)
+        self.position_tracker.execute_transaction(transaction)
 
     def process_dividend(self, dividend):
 
