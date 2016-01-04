@@ -171,10 +171,9 @@ class TestRecordAlgorithm(TestCase):
 
 class TestMiscellaneousAPI(TestCase):
 
-    @classmethod
-    def setUpClass(cls):
-        cls.sids = [1, 2]
-        cls.env = TradingEnvironment()
+    def setUp(self):
+        self.sids = [1, 2]
+        self.env = TradingEnvironment()
 
         metadata = {3: {'symbol': 'PLAY',
                         'start_date': '2002-01-01',
@@ -209,16 +208,12 @@ class TestMiscellaneousAPI(TestCase):
                 'notice_date': pd.Timestamp('2006-09-20', tz='UTC'),
                 'expiration_date': pd.Timestamp('2006-10-20', tz='UTC')}
         }
-        cls.env.write_data(equities_identifiers=cls.sids,
-                           equities_data=metadata,
-                           futures_data=futures_metadata)
+        self.env.write_data(equities_identifiers=self.sids,
+                            equities_data=metadata,
+                            futures_data=futures_metadata)
 
-    @classmethod
-    def tearDownClass(cls):
-        del cls.env
-
-    def setUp(self):
         setup_logger(self)
+
         self.sim_params = factory.create_simulation_parameters(
             num_days=2,
             data_frequency='minute',
@@ -232,8 +227,19 @@ class TestMiscellaneousAPI(TestCase):
             env=self.env,
         )
 
+        self.temp_dir = TempDirectory()
+
+        self.data_portal = create_data_portal(
+            self.env,
+            self.temp_dir,
+            self.sim_params,
+            self.sids
+        )
+
     def tearDown(self):
+        del self.env
         teardown_logger(self)
+        self.temp_dir.cleanup()
 
     def test_zipline_api_resolves_dynamically(self):
         # Make a dummy algo.
@@ -1412,7 +1418,7 @@ class TestGetDatetime(TestCase):
         del cls.env
         teardown_logger(cls)
         cls.tempdir.cleanup()
-        
+
     @parameterized.expand(
         [
             ('default', None,),

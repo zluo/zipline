@@ -44,7 +44,6 @@ class AlgorithmSimulator(object):
         # Param Setup
         # ==============
         self.sim_params = sim_params
-        self.env = algo.trading_environment
         self.data_portal = data_portal
 
         # ==============
@@ -52,6 +51,7 @@ class AlgorithmSimulator(object):
         # ==============
         self.algo = algo
         self.algo_start = normalize_date(self.sim_params.first_open)
+        self.env = algo.trading_environment
 
         # ==============
         # Snapshot Setup
@@ -355,7 +355,6 @@ class AlgorithmSimulator(object):
         if self.algo.perf_tracker.emission_rate == 'daily':
             perf_message = \
                 self.algo.perf_tracker.handle_market_close_daily(dt)
-            self.algo.perf_tracker.position_tracker.payouts = {}
             perf_message['daily_perf']['recorded_vars'] = rvars
             yield perf_message
 
@@ -364,7 +363,6 @@ class AlgorithmSimulator(object):
             # the minute is the close of the trading day
             minute_message, daily_message = \
                 self.algo.perf_tracker.handle_minute_close(dt)
-            self.algo.perf_tracker.position_tracker.payouts = {}
 
             # collect and yield the minute's perf message
             minute_message['minute_perf']['recorded_vars'] = rvars

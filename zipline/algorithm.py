@@ -1222,19 +1222,18 @@ class TradingAlgorithm(object):
                                    data_frequency=data_frequency,
                                    env=self.trading_environment)
         self.history_specs[history_spec.key_str] = history_spec
-        if self.initialized:
-            if self.history_container:
-                self.history_container.ensure_spec(
-                    history_spec, self.datetime, self._most_recent_data,
-                )
-            else:
-                self.history_container = self.history_container_class(
-                    self.history_specs,
-                    self.current_universe(),
-                    self.sim_params.first_open,
-                    self.sim_params.data_frequency,
-                    env=self.trading_environment,
-                )
+        if self.history_container:
+            self.history_container.ensure_spec(
+                history_spec, self.datetime, self._most_recent_data,
+            )
+        else:
+            self.history_container = self.history_container_class(
+                self.history_specs,
+                self.current_universe(),
+                self.sim_params.first_open,
+                self.sim_params.data_frequency,
+                env=self.trading_environment,
+            )
 
     def get_history_spec(self, bar_count, frequency, field, ffill):
         spec_key = HistorySpec.spec_key(bar_count, frequency, field, ffill)
