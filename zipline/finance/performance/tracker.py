@@ -298,14 +298,9 @@ class PerformanceTracker(object):
 
     def _handle_event_price(self, event):
         # updates last sale, and pays out a cash adjustment if applicable
-        cash_adjustment = self.position_tracker.update_last_sale(event)
-        if cash_adjustment != 0:
-            self.cumulative_performance.handle_cash_payment(
-                cash_adjustment)
-            self.todays_performance.handle_cash_payment(cash_adjustment)
+        self._data_portal.process_trade(event)
 
     def process_trade(self, event):
-        self._data_portal.process_trade(event)
         self._handle_event_price(event)
 
     def process_transaction(self, transaction):
