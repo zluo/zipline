@@ -29,7 +29,8 @@ from zipline.utils.api_support import ZiplineAPI
 from zipline.utils.control_flow import nullctx
 from zipline.utils.test_utils import (
     setup_logger,
-    teardown_logger
+    teardown_logger,
+    FakeDataPortal,
 )
 import zipline.utils.factory as factory
 import zipline.utils.simfactory as simfactory
@@ -137,6 +138,7 @@ class TestRecordAlgorithm(TestCase):
     @classmethod
     def tearDownClass(cls):
         del cls.env
+        cls.tempdir.cleanup()
 
     def setUp(self):
         self.sim_params = factory.create_simulation_parameters(num_days=4,
@@ -896,6 +898,7 @@ class TestPositions(TestCase):
         self.env = TradingEnvironment()
         self.sim_params = factory.create_simulation_parameters(num_days=4,
                                                                env=self.env)
+        self.sids = [1, 133]
         self.env.write_data(equities_identifiers=[1, 133])
 
         trade_history = factory.create_trade_history(
@@ -914,8 +917,18 @@ class TestPositions(TestCase):
         self.df_source, self.df = \
             factory.create_test_df_source(self.sim_params, self.env)
 
+        self.tempdir = TempDirectory()
+
+        self.data_portal = create_data_portal(
+            self.env,
+            self.tempdir,
+            self.sim_params,
+            self.sids
+        )
+
     def tearDown(self):
         teardown_logger(self)
+        self.tempdir.cleanup()
 
     def test_empty_portfolio(self):
         algo = EmptyPositionsAlgorithm(sim_params=self.sim_params,
@@ -976,10 +989,10 @@ class TestAlgoScript(TestCase):
                                              cls.sim_params,
                                              cls.sids)
 
-
     @classmethod
     def tearDownClass(cls):
         del cls.env
+        cls.tempdir.cleanup()
 
     def setUp(self):
         days = 251
@@ -2107,5 +2120,7 @@ class TestTradingAlgorithm(TestCase):
 
         algo = TradingAlgorithm(initialize=initialize, handle_data=handle_data,
                                 analyze=analyze)
-        results = algo.run(self.panel, data_portal=self.data_portal)
+
+        data_portal = FakeDataPortal()
+        results = algo.run(self.panel, data_portal=data_portal)
         self.assertIs(results, self.perf_ref)
