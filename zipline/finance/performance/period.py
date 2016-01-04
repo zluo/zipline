@@ -173,8 +173,6 @@ class PerformancePeriod(object):
         # keyed on sid
         self._execution_cash_flow_multipliers = {}
 
-        self._futures_previous_last_sale = {}
-
     _position_tracker = None
 
     @property

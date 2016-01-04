@@ -111,7 +111,7 @@ from zipline.utils.test_utils import (
 _multiprocess_can_split_ = False
 
 
-class TestRecordAlgorithm(TestCase):
+class TestRecordAlgorihtm(TestCase):
 
     @classmethod
     def setUpClass(cls):
@@ -1881,32 +1881,24 @@ class TestAccountControls(TestCase):
 
 class TestClosePosAlgo(TestCase):
 
-    @classmethod
-    def setUpClass(cls):
-        cls.tempdir = TempDirectory()
-        cls.env = TradingEnvironment()
-        cls.days = pd.date_range(start=pd.Timestamp("2006-01-09", tz='UTC'),
-                                 end=pd.Timestamp("2006-01-12", tz='UTC'))
-
-        cls.sid = 1
-
-        cls.sim_params = factory.create_simulation_parameters(
-            start=cls.days[0],
-            end=cls.days[-1]
-        )
-
-        cls.data_portal = create_data_portal(
-            cls.env,
-            cls.tempdir,
-            cls.sim_params,
-            [cls.sid]
-        )
-
-    @classmethod
-    def tearDownClass(cls):
-        cls.tempdir.cleanup()
-
     def setUp(self):
+        self.tempdir = TempDirectory()
+        self.env = TradingEnvironment()
+        self.days = self.env.trading_days[:4]
+
+        self.sid = 1
+
+        self.sim_params = factory.create_simulation_parameters(
+            start=self.days[0],
+            end=self.days[-1]
+        )
+
+        self.data_portal = create_data_portal(
+            self.env,
+            self.tempdir,
+            self.sim_params,
+            [self.sid]
+        )
         self.panel = pd.Panel({1: pd.DataFrame({
             'price': [1, 1, 2, 4], 'volume': [1e9, 1e9, 1e9, 0],
             'type': [DATASOURCE_TYPE.TRADE,
@@ -1923,6 +1915,10 @@ class TestClosePosAlgo(TestCase):
                      DATASOURCE_TYPE.TRADE]},
             index=self.days)
         })
+
+
+    def tearDown(self):
+        self.tempdir.cleanup()
 
     def test_close_position_equity(self):
         metadata = {1: {'symbol': 'TEST',

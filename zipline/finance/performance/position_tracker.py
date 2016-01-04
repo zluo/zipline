@@ -18,8 +18,8 @@ from __future__ import division
 import logbook
 import numpy as np
 import pandas as pd
+from pandas.lib import checknull
 from collections import namedtuple
-
 try:
     # optional cython based OrderedDict
     from cyordereddict import OrderedDict
@@ -226,6 +226,26 @@ class PositionTracker(object):
         # Clear out past dates
         while past_asset_end_dates:
             self._auto_close_position_sids.pop(past_asset_end_dates.pop())
+
+    def update_last_sale(self, event):
+        # NOTE, PerformanceTracker already vetted as TRADE type
+        sid = event.sid
+        if sid not in self.positions:
+            return 0
+
+        price = event.price
+
+        if checknull(price):
+            return 0
+
+        pos = self.positions[sid]
+        old_price = pos.last_sale_price
+        pos.last_sale_date = event.dt
+        pos.last_sale_price = price
+
+        # Calculate cash adjustment on assets with multipliers
+        return ((price - old_price) * self._position_payout_multipliers[sid]
+                * pos.amount)
 
     def update_positions(self, positions):
         # update positions in batch
@@ -444,7 +464,7 @@ class PositionTracker(object):
             net_exposure=net_exposure,
             longs_count=longs_count,
             shorts_count=shorts_count,
-            net_value=net_value
+            net_value=net_value,
         )
 
     def __getstate__(self):

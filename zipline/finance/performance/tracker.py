@@ -67,6 +67,7 @@ import numpy as np
 import pandas as pd
 from pandas.tseries.tools import normalize_date
 
+from zipline.assets import Future
 import zipline.finance.risk as risk
 from . period import PerformancePeriod
 
@@ -296,7 +297,20 @@ class PerformanceTracker(object):
 
         return _dict
 
+    def _handle_event_price(self, event):
+        # updates last sale, and pays out a cash adjustment if applicable
+        cash_adjustment = self.position_tracker.update_last_sale(event)
+        if cash_adjustment != 0:
+            self.cumulative_performance.handle_cash_payment(
+                cash_adjustment)
+            self.todays_performance.handle_cash_payment(cash_adjustment)
+
+    def process_trade(self, event):
+        self._data_portal.process_trade(event)
+        self._handle_event_price(event)
+
     def process_transaction(self, transaction):
+        self._handle_event_price(transaction)
         self.txn_count += 1
         self.position_tracker.execute_transaction(transaction)
         self.cumulative_performance.handle_execution(transaction)
@@ -350,7 +364,7 @@ class PerformanceTracker(object):
         # CLOSE_POSITION events that contain prices that must be handled as
         # a final trade event
         if 'price' in event:
-            self.data_portal.process_trade(event)
+            self._data_portal.process_trade(event)
 
         txn = self.position_tracker.\
             maybe_create_close_position_transaction(event)

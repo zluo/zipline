@@ -190,7 +190,7 @@ class AlgorithmSimulator(object):
         #
         # Done here, to allow for perf_tracker or blotter to be swapped out
         # or changed in between snapshots.
-        data_portal_process_trade = self.data_portal.process_trade
+        perf_process_trade = self.algo.perf_tracker.process_trade
         perf_process_transaction = self.algo.perf_tracker.process_transaction
         perf_process_order = self.algo.perf_tracker.process_order
         perf_process_benchmark = self.algo.perf_tracker.process_benchmark
@@ -275,7 +275,7 @@ class AlgorithmSimulator(object):
                     elif txn.type == DATASOURCE_TYPE.COMMISSION:
                         perf_process_commission(txn)
                     perf_process_order(order)
-                data_portal_process_trade(trade)
+                perf_process_trade(trade)
 
         for custom in customs:
             self.update_universe(custom)
@@ -355,6 +355,7 @@ class AlgorithmSimulator(object):
         if self.algo.perf_tracker.emission_rate == 'daily':
             perf_message = \
                 self.algo.perf_tracker.handle_market_close_daily(dt)
+            self.algo.perf_tracker.position_tracker.payouts = {}
             perf_message['daily_perf']['recorded_vars'] = rvars
             yield perf_message
 
@@ -363,6 +364,7 @@ class AlgorithmSimulator(object):
             # the minute is the close of the trading day
             minute_message, daily_message = \
                 self.algo.perf_tracker.handle_minute_close(dt)
+            self.algo.perf_tracker.position_tracker.payouts = {}
 
             # collect and yield the minute's perf message
             minute_message['minute_perf']['recorded_vars'] = rvars
