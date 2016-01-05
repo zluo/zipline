@@ -21,6 +21,7 @@ from nose.tools import (
 
 from datetime import datetime
 import pandas as pd
+from testfixtures import TempDirectory
 
 import pytz
 from zipline.finance import trading
@@ -30,7 +31,8 @@ from zipline.utils import factory
 from zipline.utils.factory import create_simulation_parameters
 from zipline.utils.test_utils import (
     setup_logger,
-    teardown_logger
+    teardown_logger,
+    create_data_portal,
 )
 from zipline.protocol import (
     Event,
@@ -89,7 +91,8 @@ class AlgorithmGeneratorTestCase(TestCase):
     @classmethod
     def setUpClass(cls):
         cls.env = trading.TradingEnvironment()
-        cls.env.write_data(equities_identifiers=[8229])
+        cls.sids = [8229]
+        cls.env.write_data(equities_identifiers=cls.sids)
 
     @classmethod
     def tearDownClass(cls):
@@ -97,9 +100,11 @@ class AlgorithmGeneratorTestCase(TestCase):
 
     def setUp(self):
         setup_logger(self)
+        self.tempdir = TempDirectory()
 
     def tearDown(self):
         teardown_logger(self)
+        self.tempdir.cleanup()
 
     @nottest
     def test_lse_algorithm(self):
@@ -152,7 +157,13 @@ class AlgorithmGeneratorTestCase(TestCase):
             env=self.env,
         )
         algo.set_sources([trade_source])
-
+        data_portal = create_data_portal(
+            self.env,
+            self.tempdir,
+            sim_params,
+            self.sids,
+        )
+        algo.data_portal = data_portal
         gen = algo.get_generator()
         self.assertTrue(list(gen))
 
@@ -198,6 +209,14 @@ class AlgorithmGeneratorTestCase(TestCase):
 
         algo.set_sources([midnight_custom_source, minute_event_source])
 
+        data_portal = create_data_portal(
+            self.env,
+            self.tempdir,
+            sim_params,
+            self.sids,
+        )
+        algo.data_portal = data_portal
+
         gen = algo.get_generator()
         # Consume the generator
         list(gen)
@@ -225,6 +244,14 @@ class AlgorithmGeneratorTestCase(TestCase):
         )
         algo.set_sources([trade_source])
 
+        data_portal = create_data_portal(
+            self.env,
+            self.tempdir,
+            sim_params,
+            self.sids,
+        )
+        algo.data_portal = data_portal
+
         gen = algo.get_generator()
         results = list(gen)
         self.assertEqual(results[-2]['progress'], 1.0)
@@ -242,5 +269,12 @@ class AlgorithmGeneratorTestCase(TestCase):
                                                   data_frequency='minute',
                                                   env=self.env)
         algo = TestAlgo(self, sim_params=sim_params, env=self.env)
-        algo.run(source=[], overwrite_sim_params=False)
+        data_portal = create_data_portal(
+            self.env,
+            self.tempdir,
+            sim_params,
+            self.sids,
+        )
+        algo.run(source=[], overwrite_sim_params=False,
+                 data_portal=data_portal)
         self.assertEqual(algo.datetime, sim_params.last_close)
