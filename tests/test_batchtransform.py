@@ -22,6 +22,7 @@ import pandas as pd
 from datetime import datetime
 from unittest import TestCase
 
+from zipline.data.data_portal import DataPortal
 from zipline.utils.test_utils import setup_logger, teardown_logger
 
 from zipline.sources.data_source import DataSource
@@ -115,13 +116,15 @@ class TestChangeOfSids(TestCase):
             env=self.env,
         )
 
+        self.data_portal = DataPortal(self.env)
+
     def test_all_sids_passed(self):
         algo = BatchTransformAlgorithmSetSid(
             sim_params=self.sim_params,
             env=self.env,
         )
         source = DifferentSidSource()
-        algo.run(source)
+        algo.run(source, data_portal=self.data_portal)
         for i, (df, date) in enumerate(zip(algo.history, source.trading_days)):
             self.assertEqual(df.index[-1], date, "Newest event doesn't \
                              match.")
@@ -157,13 +160,15 @@ class TestBatchTransformMinutely(TestCase):
                                           env=self.env,
                                           bars='minute')
 
+        self.data_portal = DataPortal(self.env)
+
     def tearDown(self):
         teardown_logger(self)
 
     def test_core(self):
         algo = BatchTransformAlgorithmMinute(sim_params=self.sim_params,
                                              env=self.env)
-        algo.run(self.source)
+        algo.run(self.source, data_portal=self.data_portal)
         wl = int(algo.window_length * 6.5 * 60)
         for bt in algo.history[wl:]:
             self.assertEqual(len(bt), wl)
@@ -173,7 +178,7 @@ class TestBatchTransformMinutely(TestCase):
                                              env=self.env,
                                              window_length=1,
                                              refresh_period=0)
-        algo.run(self.source)
+        algo.run(self.source, data_portal=self.data_portal)
         wl = int(algo.window_length * 6.5 * 60)
         np.testing.assert_array_equal(algo.history[:(wl - 1)],
                                       [None] * (wl - 1))
@@ -202,13 +207,15 @@ class TestBatchTransform(TestCase):
         self.source, self.df = \
             factory.create_test_df_source(self.sim_params, self.env)
 
+        self.data_portal = DataPortal(self.env)
+
     def tearDown(self):
         teardown_logger(self)
 
     def test_core_functionality(self):
         algo = BatchTransformAlgorithm(sim_params=self.sim_params,
                                        env=self.env)
-        algo.run(self.source)
+        algo.run(self.source, data_portal=self.data_portal)
         wl = algo.window_length
         # The following assertion depend on window length of 3
         self.assertEqual(wl, 3)
@@ -278,7 +285,7 @@ class TestBatchTransform(TestCase):
         algo = BatchTransformAlgorithm(1, kwarg='str',
                                        sim_params=self.sim_params,
                                        env=self.env)
-        algo.run(self.source)
+        algo.run(self.source, data_portal=self.data_portal)
         self.assertEqual(algo.args, (1,))
         self.assertEqual(algo.kwargs, {'kwarg': 'str'})
 
