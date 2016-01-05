@@ -36,6 +36,7 @@ from zipline.protocol import Event, DATASOURCE_TYPE
 import zipline.utils.factory as factory
 import zipline.utils.simfactory as simfactory
 
+from zipline.data.data_portal import DataPortal
 from zipline.finance.blotter import Blotter
 from zipline.gens.composites import date_sorted_sources
 
@@ -68,8 +69,10 @@ class FinanceTestCase(TestCase):
         del cls.env
 
     def setUp(self):
+        self.data_portal = DataPortal(self.env)
         self.zipline_test_config = {
             'sid': 133,
+            'data_portal': self.data_portal,
         }
 
         setup_logger(self)
@@ -272,7 +275,8 @@ class FinanceTestCase(TestCase):
             self.assertEqual(order.sid, sid)
             self.assertEqual(order.amount, order_amount * alternator ** i)
 
-        tracker = PerformanceTracker(sim_params, env=self.env)
+        tracker = PerformanceTracker(sim_params, env=self.env,
+                                     data_portal=self.data_portal)
 
         benchmark_returns = [
             Event({'dt': dt,
