@@ -19,6 +19,7 @@ import pytz
 
 import numpy as np
 
+from zipline.data.data_portal import DataPortal
 from zipline.finance.trading import SimulationParameters, TradingEnvironment
 from zipline.algorithm import TradingAlgorithm
 from zipline.protocol import (
@@ -46,6 +47,7 @@ class TestEventsThroughRisk(unittest.TestCase):
     def setUpClass(cls):
         cls.env = TradingEnvironment()
         cls.env.write_data(equities_identifiers=[1])
+        cls.data_portal = DataPortal(cls.env)
 
     @classmethod
     def tearDownClass(cls):
@@ -76,6 +78,7 @@ class TestEventsThroughRisk(unittest.TestCase):
         )
 
         algo = BuyAndHoldAlgorithm(sim_params=sim_params, env=self.env)
+        algo.data_portal = self.data_portal
 
         first_date = datetime.datetime(2006, 1, 3, tzinfo=pytz.utc)
         second_date = datetime.datetime(2006, 1, 4, tzinfo=pytz.utc)
@@ -199,6 +202,7 @@ class TestEventsThroughRisk(unittest.TestCase):
         algo = BuyAndHoldAlgorithm(
             sim_params=sim_params,
             env=self.env)
+        algo.data_portal = self.data_portal
 
         first_date = datetime.datetime(2006, 1, 3, tzinfo=pytz.utc)
         first_open, first_close = self.env.get_open_and_close(first_date)
