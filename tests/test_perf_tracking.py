@@ -38,6 +38,7 @@ import zipline.finance.performance as perf
 from zipline.finance.transaction import Transaction, create_transaction
 import zipline.utils.math_utils as zp_math
 
+from zipline.data.data_portal import DataPortal
 from zipline.gens.composites import date_sorted_sources
 from zipline.finance.trading import SimulationParameters
 from zipline.finance.blotter import Order
@@ -176,7 +177,8 @@ def calculate_results(sim_params,
     txns = txns or []
     splits = splits or []
 
-    perf_tracker = perf.PerformanceTracker(sim_params, env)
+    data_portal = DataPortal(env)
+    perf_tracker = perf.PerformanceTracker(sim_params, env, data_portal)
 
     if dividend_events is not None:
         dividend_frame = pd.DataFrame(
@@ -225,8 +227,8 @@ def calculate_results(sim_params,
             perf_tracker.process_split(split)
 
         if bm_updated:
-            msg = perf_tracker.handle_market_close_daily()
-            msg['account'] = perf_tracker.get_account(True)
+            msg = perf_tracker.handle_market_close_daily(date)
+            msg['account'] = perf_tracker.get_account(True, date)
             results.append(msg)
             bm_updated = False
     return results
@@ -1126,8 +1128,10 @@ class TestPositionPerformance(unittest.TestCase):
         )
 
         txn = create_txn(trades[1], 10.0, 1000)
-        pt = perf.PositionTracker(self.env.asset_finder)
-        pp = perf.PerformancePeriod(1000.0, self.env.asset_finder)
+        data_portal = DataPortal(self.env)
+        pt = perf.PositionTracker(self.env.asset_finder, data_portal, 'daily')
+        pp = perf.PerformancePeriod(1000.0, self.env.asset_finder, 'daily',
+                                    data_portal)
         pp.position_tracker = pt
 
         pt.execute_transaction(txn)
@@ -1206,8 +1210,10 @@ class TestPositionPerformance(unittest.TestCase):
         )
 
         txn = create_txn(trades[1], 10.0, 100)
-        pt = perf.PositionTracker(self.env.asset_finder)
-        pp = perf.PerformancePeriod(1000.0, self.env.asset_finder)
+        data_portal = DataPortal(self.env)
+        pt = perf.PositionTracker(self.env.asset_finder, data_portal, 'daily')
+        pp = perf.PerformancePeriod(1000.0, self.env.asset_finder, 'daily',
+                                    data_portal)
         pp.position_tracker = pt
 
         pt.execute_transaction(txn)
@@ -1536,8 +1542,10 @@ trade after cover"""
         )
 
         cover_txn = create_txn(trades[6], 7.0, 100)
-        pt = perf.PositionTracker(self.env.asset_finder)
-        pp = perf.PerformancePeriod(1000.0, self.env.asset_finder)
+        data_portal = DataPortal(self.env)
+        pt = perf.PositionTracker(self.env.asset_finder, data_portal, 'daily')
+        pp = perf.PerformancePeriod(1000.0, self.env.asset_finder, 'daily',
+                                    data_portal)
         pp.position_tracker = pt
 
         pt.execute_transaction(short_txn)
@@ -1636,8 +1644,10 @@ shares in position"
         trades = factory.create_trade_history(*history_args)
         transactions = factory.create_txn_history(*history_args)
 
-        pt = perf.PositionTracker(self.env.asset_finder)
-        pp = perf.PerformancePeriod(1000.0, self.env.asset_finder)
+        data_portal = DataPortal(self.env)
+        pt = perf.PositionTracker(self.env.asset_finder, data_portal, 'daily')
+        pp = perf.PerformancePeriod(1000.0, self.env.asset_finder, 'daily',
+                                    data_portal)
         pp.position_tracker = pt
 
         average_cost = 0
@@ -1703,8 +1713,9 @@ shares in position"
 
         self.assertEqual(pp.pnl, -800, "this period goes from +400 to -400")
 
-        pt3 = perf.PositionTracker(self.env.asset_finder)
-        pp3 = perf.PerformancePeriod(1000.0, self.env.asset_finder)
+        pt3 = perf.PositionTracker(self.env.asset_finder, data_portal, 'daily')
+        pp3 = perf.PerformancePeriod(1000.0, self.env.asset_finder, 'daily',
+                                     data_portal)
         pp3.position_tracker = pt3
 
         average_cost = 0
@@ -1754,8 +1765,10 @@ shares in position"
         trades = factory.create_trade_history(*history_args)
         transactions = factory.create_txn_history(*history_args)
 
-        pt = perf.PositionTracker(self.env.asset_finder)
-        pp = perf.PerformancePeriod(1000.0, self.env.asset_finder)
+        data_portal = DataPortal(self.env)
+        pt = perf.PositionTracker(self.env.asset_finder, data_portal, 'daily')
+        pp = perf.PerformancePeriod(1000.0, self.env.asset_finder, 'daily',
+                                    data_portal)
         pp.position_tracker = pt
 
         for txn, cb in zip(transactions, cost_bases):
@@ -1890,8 +1903,9 @@ class TestPerformanceTracker(unittest.TestCase):
             'dt',
             'price',
             'changed']
+        data_portal = DataPortal(self.env)
         perf_tracker = perf.PerformanceTracker(
-            sim_params, self.env
+            sim_params, self.env, data_portal
         )
 
         events = date_sorted_sources(trade_history, trade_history2)
@@ -1924,7 +1938,7 @@ class TestPerformanceTracker(unittest.TestCase):
                     perf_tracker.process_benchmark(event)
                 elif event.type == zp.DATASOURCE_TYPE.TRANSACTION:
                     perf_tracker.process_transaction(event)
-            msg = perf_tracker.handle_market_close_daily()
+            msg = perf_tracker.handle_market_close_daily(date)
             perf_messages.append(msg)
 
         self.assertEqual(perf_tracker.txn_count, len(txns))
@@ -1984,7 +1998,9 @@ class TestPerformanceTracker(unittest.TestCase):
             emission_rate='minute',
             env=self.env,
         )
-        tracker = perf.PerformanceTracker(sim_params, env=self.env)
+        data_portal = DataPortal(self.env)
+        tracker = perf.PerformanceTracker(sim_params, env=self.env,
+                                          data_portal=data_portal)
 
         foo_event_1 = factory.create_trade(foosid, 10.0, 20, start_dt)
         order_event_1 = Order(sid=foo_event_1.sid,
@@ -2078,7 +2094,10 @@ class TestPerformanceTracker(unittest.TestCase):
         check_perf_tracker_serialization(tracker)
 
     def test_close_position_event(self):
-        pt = perf.PositionTracker(asset_finder=self.env.asset_finder)
+        data_portal = DataPortal(self.env)
+        pt = perf.PositionTracker(asset_finder=self.env.asset_finder,
+                                  data_frequency='daily',
+                                  data_portal=data_portal)
         dt = pd.Timestamp("1984/03/06 3:00PM")
         pos1 = perf.Position(1, amount=np.float64(120.0),
                              last_sale_date=dt, last_sale_price=3.4)
@@ -2121,7 +2140,9 @@ class TestPerformanceTracker(unittest.TestCase):
         )
 
         # Create a tracker and a dividend
-        perf_tracker = perf.PerformanceTracker(sim_params, env=self.env)
+        data_portal = DataPortal(self.env)
+        perf_tracker = perf.PerformanceTracker(sim_params, env=self.env,
+                                               data_portal=data_portal)
         dividend = factory.create_dividend(
             1,
             10.00,
@@ -2164,9 +2185,9 @@ class TestPerformanceTracker(unittest.TestCase):
             period_end=end_dt,
             env=self.env,
         )
-
+        data_portal = DataPortal(self.env)
         perf_tracker = perf.PerformanceTracker(
-            sim_params, env=self.env
+            sim_params, env=self.env, data_portal=data_portal,
         )
         check_perf_tracker_serialization(perf_tracker)
 
@@ -2207,7 +2228,8 @@ class TestPositionTracker(unittest.TestCase):
         Originally this bug was due to np.dot([], []) returning
         np.bool_(False)
         """
-        pt = perf.PositionTracker(self.env.asset_finder)
+        data_portal = DataPortal(self.env)
+        pt = perf.PositionTracker(self.env.asset_finder, data_portal)
         pos_stats = pt.stats()
 
         stats = [
@@ -2228,7 +2250,7 @@ class TestPositionTracker(unittest.TestCase):
             self.assertNotIsInstance(val, (bool, np.bool_))
 
     def test_position_values_and_exposures(self):
-        pt = perf.PositionTracker(self.env.asset_finder)
+        pt = perf.PositionTracker(self.env.asset_finder, None, None)
         dt = pd.Timestamp("1984/03/06 3:00PM")
         pos1 = perf.Position(1, amount=np.float64(10.0),
                              last_sale_date=dt, last_sale_price=10)
@@ -2261,7 +2283,7 @@ class TestPositionTracker(unittest.TestCase):
         self.assertEqual(100 - 200 + 300000 - 400000, pos_stats.net_exposure)
 
     def test_serialization(self):
-        pt = perf.PositionTracker(self.env.asset_finder)
+        pt = perf.PositionTracker(self.env.asset_finder, None, None)
         dt = pd.Timestamp("1984/03/06 3:00PM")
         pos1 = perf.Position(1, amount=np.float64(120.0),
                              last_sale_date=dt, last_sale_price=3.4)
@@ -2281,15 +2303,13 @@ class TestPerformancePeriod(unittest.TestCase):
 
     def test_serialization(self):
         env = TradingEnvironment()
-        pt = perf.PositionTracker(env.asset_finder)
-        pp = perf.PerformancePeriod(100, env.asset_finder)
-        pp.position_tracker = pt
+        pp = perf.PerformancePeriod(100, env.asset_finder, 'minute', None)
 
         p_string = dumps_with_persistent_ids(pp)
         test = loads_with_persistent_ids(p_string, env=env)
 
         correct = pp.__dict__.copy()
-        del correct['_position_tracker']
+        correct.pop('_data_portal')
 
         nt.assert_count_equal(test.__dict__.keys(), correct.keys())
 

@@ -28,6 +28,7 @@ from .history_cases import (
     HISTORY_CONTAINER_TEST_CASES,
 )
 from zipline import TradingAlgorithm
+from zipline.data.data_portal import DataPortal
 from zipline.errors import HistoryInInitialize, IncompatibleHistoryFrequency
 from zipline.finance import trading
 from zipline.finance.trading import (
@@ -172,6 +173,7 @@ class TestHistoryContainer(TestCase):
     @classmethod
     def setUpClass(cls):
         cls.env = TradingEnvironment()
+        cls.data_portal = DataPortal(cls.env)
 
     @classmethod
     def tearDownClass(cls):
@@ -422,6 +424,7 @@ class TestHistoryAlgo(TestCase):
     def setUpClass(cls):
         cls.env = trading.TradingEnvironment()
         cls.env.write_data(equities_identifiers=[0, 1])
+        cls.data_portal = DataPortal(cls.env)
 
     @classmethod
     def tearDownClass(cls):
@@ -470,7 +473,7 @@ def handle_data(context, data):
             env=TestHistoryAlgo.env,
         )
 
-        output = test_algo.run(source)
+        output = test_algo.run(source, data_portal=self.data_portal)
         self.assertIsNotNone(output)
 
         history_trace = test_algo.history_trace
@@ -504,7 +507,7 @@ def handle_data(context, data):
                 env=TestHistoryAlgo.env,
             )
             source = RandomWalkSource(start=start, end=end)
-            algo.run(source)
+            algo.run(source, data_portal=self.data_portal)
 
     def test_basic_history(self):
         algo_text = """
@@ -541,7 +544,7 @@ def handle_data(context, data):
 
         source = RandomWalkSource(start=start,
                                   end=end)
-        output = test_algo.run(source)
+        output = test_algo.run(source, data_portal=self.data_portal)
         self.assertIsNotNone(output)
 
         last_prices = test_algo.last_prices[0]
@@ -604,7 +607,7 @@ def handle_data(context, data):
         )
 
         source = RandomWalkSource(start=start, end=end, freq=data_freq)
-        output = test_algo.run(source)
+        output = test_algo.run(source, data_portal=self.data_portal)
         self.assertIsNotNone(output)
 
         # Get the prices recorded by history() within handle_data()
@@ -700,7 +703,7 @@ def handle_data(context, data):
         )
 
         source = RandomWalkSource(start=start, end=end)
-        output = test_algo.run(source)
+        output = test_algo.run(source, data_portal=self.data_portal)
         self.assertIsNotNone(output)
 
         # Get the prices recorded by history() within BTS
@@ -768,7 +771,7 @@ def handle_data(context, data):
         )
 
         source = RandomWalkSource(start=start, end=end, freq=data_freq)
-        output = test_algo.run(source)
+        output = test_algo.run(source, data_portal=self.data_portal)
         self.assertIsNotNone(output)
 
         # Get the volume recorded by history() within handle_data()
@@ -838,7 +841,7 @@ def handle_data(context, data):
         )
 
         source = RandomWalkSource(start=start, end=end)
-        output = test_algo.run(source)
+        output = test_algo.run(source, data_portal=self.data_portal)
         self.assertIsNotNone(output)
 
         # Get the volumes recorded for sid 0 by history() within BTS
@@ -896,7 +899,7 @@ def handle_data(context, data):
 
         source = RandomWalkSource(start=start,
                                   end=end)
-        output = test_algo.run(source)
+        output = test_algo.run(source, data_portal=self.data_portal)
 
         self.assertIsNotNone(output)
 
@@ -953,7 +956,7 @@ def handle_data(context, data):
 
         source = RandomWalkSource(start=start,
                                   end=end)
-        output = test_algo.run(source)
+        output = test_algo.run(source, data_portal=self.data_portal)
         self.assertIsNotNone(output)
 
         last_prices = test_algo.last_prices[0]
@@ -1009,7 +1012,7 @@ def handle_data(context, data):
 
         source = RandomWalkSource(start=start,
                                   end=end)
-        output = test_algo.run(source)
+        output = test_algo.run(source, data_portal=self.data_portal)
 
         np.testing.assert_equal(output.ix[0, 'current_volume'],
                                 212218404.0)
@@ -1055,7 +1058,7 @@ def handle_data(context, data):
 
         source = RandomWalkSource(start=start,
                                   end=end)
-        output = test_algo.run(source)
+        output = test_algo.run(source, data_portal=self.data_portal)
 
         np.testing.assert_equal(output.ix[0, 'current_high'],
                                 139.5370641791925)
@@ -1101,7 +1104,7 @@ def handle_data(context, data):
 
         source = RandomWalkSource(start=start,
                                   end=end)
-        output = test_algo.run(source)
+        output = test_algo.run(source, data_portal=self.data_portal)
 
         np.testing.assert_equal(output.ix[0, 'current_low'],
                                 99.891436939669944)
@@ -1147,7 +1150,7 @@ def handle_data(context, data):
 
         source = RandomWalkSource(start=start,
                                   end=end)
-        output = test_algo.run(source)
+        output = test_algo.run(source, data_portal=self.data_portal)
 
         np.testing.assert_equal(output.ix[0, 'current_open'],
                                 99.991436939669939)
@@ -1198,7 +1201,7 @@ def handle_data(context, data):
 
         source = RandomWalkSource(start=start,
                                   end=end)
-        output = test_algo.run(source)
+        output = test_algo.run(source, data_portal=self.data_portal)
 
         # At this point, just ensure that there is no crash.
         self.assertIsNotNone(output)
@@ -1258,7 +1261,7 @@ def handle_data(context, data):
 
         source = RandomWalkSource(start=start,
                                   end=end)
-        output = test_algo.run(source)
+        output = test_algo.run(source, data_portal=self.data_portal)
         # At this point, just ensure that there is no crash.
         self.assertIsNotNone(output)
 
@@ -1302,7 +1305,7 @@ def handle_data(context, data):
         source = RandomWalkSource(start=start, end=end, freq=data_freq)
 
         self.assertIsNone(test_algo.history_container)
-        test_algo.run(source)
+        test_algo.run(source, data_portal=self.data_portal)
         self.assertIsNotNone(
             test_algo.history_container,
             msg='HistoryContainer was not constructed at runtime',
@@ -1410,7 +1413,7 @@ def handle_data(context, data):
         source = RandomWalkSource(start=start, end=end)
 
         self.assertIsNone(test_algo.history_container)
-        test_algo.run(source)
+        test_algo.run(source, data_portal=self.data_portal)
 
     @parameterized.expand([
         (1,),
@@ -1461,7 +1464,7 @@ def handle_data(context, data):
         source = RandomWalkSource(start=start, end=end)
 
         self.assertIsNone(test_algo.history_container)
-        test_algo.run(source)
+        test_algo.run(source, data_portal=self.data_portal)
 
 
 class TestHistoryContainerResize(TestCase):
@@ -1469,6 +1472,7 @@ class TestHistoryContainerResize(TestCase):
     @classmethod
     def setUpClass(cls):
         cls.env = TradingEnvironment()
+        cls.data_portal = DataPortal(cls.env)
 
     @classmethod
     def tearDownClass(cls):
