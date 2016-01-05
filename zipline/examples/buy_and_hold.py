@@ -17,6 +17,7 @@ import pandas as pd
 from zipline import TradingAlgorithm
 from zipline.api import order, sid
 from zipline.data.loader import load_bars_from_yahoo
+from zipline.data.data_portal import DataPortal
 
 # creating time interval
 start = pd.Timestamp('2008-01-01', tz='UTC')
@@ -40,6 +41,6 @@ def handle_data(context, data):
             order(sid(stock), 100)
         context.has_ordered = True
 
-
 algo = TradingAlgorithm(initialize=initialize, handle_data=handle_data)
-results = algo.run(input_data)
+data_portal = DataPortal(algo.trading_environment)
+results = algo.run(input_data, data_portal=data_portal)

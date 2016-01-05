@@ -23,6 +23,7 @@ momentum).
 """
 
 from zipline.api import order_target, record, symbol, history, add_history
+from zipline.data.data_portal import DataPortal
 
 
 def initialize(context):
@@ -122,7 +123,8 @@ if __name__ == '__main__':
     # Create and run the algorithm.
     algo = TradingAlgorithm(initialize=initialize, handle_data=handle_data,
                             identifiers=['AAPL'])
-    results = algo.run(data)
+    data_portal = DataPortal(algo.trading_environment)
+    results = algo.run(data, data_portal=data_portal)
 
     # Plot the portfolio and asset data.
     analyze(results=results)

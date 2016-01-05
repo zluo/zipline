@@ -5,6 +5,7 @@ from datetime import datetime
 import pytz
 
 from zipline.algorithm import TradingAlgorithm
+from zipline.data.data_portal import DataPortal
 from zipline.utils.factory import load_from_yahoo
 from zipline.finance import commission
 
@@ -176,7 +177,8 @@ if __name__ == '__main__':
     olmar = TradingAlgorithm(handle_data=handle_data,
                              initialize=initialize,
                              identifiers=STOCKS)
-    results = olmar.run(data)
+    data_portal = DataPortal(olmar.trading_environment)
+    results = olmar.run(data, data_portal=data_portal)
 
     # Plot the portfolio data.
     analyze(results=results)

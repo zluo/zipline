@@ -22,6 +22,7 @@ from datetime import datetime
 import pytz
 
 from zipline.algorithm import TradingAlgorithm
+from zipline.data.data_portal import DataPortal
 from zipline.transforms import batch_transform
 from zipline.utils.factory import load_from_yahoo
 from zipline.api import symbol
@@ -152,7 +153,8 @@ if __name__ == '__main__':
 
     # Create and run the algorithm.
     pairtrade = Pairtrade()
-    results = pairtrade.run(data)
+    data_portal = DataPortal(pairtrade.trading_environment)
+    results = pairtrade.run(data, data_portal=data_portal)
 
     # Plot the portfolio data.
     analyze(results=results)
