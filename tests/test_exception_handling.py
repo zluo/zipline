@@ -23,6 +23,7 @@ from zipline.test_algorithms import (
     DivByZeroAlgorithm,
     SetPortfolioAlgorithm,
 )
+from zipline.data.data_portal import DataPortal
 from zipline.finance.slippage import FixedSlippage
 from zipline.finance.trading import TradingEnvironment
 
@@ -52,7 +53,8 @@ class ExceptionTestCase(TestCase):
     def setUp(self):
         self.zipline_test_config = {
             'sid': 133,
-            'slippage': FixedSlippage()
+            'slippage': FixedSlippage(),
+            'data_portal': DataPortal(self.env),
         }
         setup_logger(self)
 
