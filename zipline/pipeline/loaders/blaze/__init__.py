@@ -1,3 +1,4 @@
+from .buyback_auth import BlazeBuybackAuthorizationsLoader
 from .core import (
     AD_FIELD_NAME,
     BlazeLoader,
@@ -16,6 +17,7 @@ __all__ = (
     'AD_FIELD_NAME',
     'ANNOUNCEMENT_FIELD_NAME',
     'BlazeEarningsCalendarLoader',
+    'BlazeBuybackAuthorizationsLoader',
     'BlazeLoader',
     'NoDeltasWarning',
     'SID_FIELD_NAME',

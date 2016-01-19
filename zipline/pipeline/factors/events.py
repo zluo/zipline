@@ -3,6 +3,7 @@ Factors describing information about event data (e.g. earnings
 announcements, acquisitions, dividends, etc.).
 """
 from numpy import newaxis
+from zipline.pipeline.data.buyback_auth import BuybackAuthorizations
 from zipline.pipeline.data.earnings import EarningsCalendar
 from zipline.utils.numpy_utils import (
     np_NaT,
@@ -12,6 +13,47 @@ from zipline.utils.numpy_utils import (
 )
 
 from .factor import Factor
+
+
+class BusinessDaysSincePreviousEvents(Factor):
+    """
+    Abstract class for business days since a previous event.
+    """
+    window_length = 0
+    dtype = float64_dtype
+
+    def _compute(self, arrays, dates, assets, mask):
+
+        # Coerce from [ns] to [D] for numpy busday_count.
+        announce_dates = arrays[0].astype(datetime64D_dtype)
+
+        # Set masked values to NaT.
+        announce_dates[~mask] = np_NaT
+
+        # Convert row labels into a column vector for broadcasted comparison.
+        reference_dates = dates.values.astype(datetime64D_dtype)[:, newaxis]
+        return busday_count_mask_NaT(reference_dates, announce_dates)
+
+
+class BusinessDaysUntilNextEvents(Factor):
+    """
+    Abstract class for business days since a next event.
+    """
+    window_length = 0
+    dtype = float64_dtype
+
+    def _compute(self, arrays, dates, assets, mask):
+
+        # Coerce from [ns] to [D] for numpy busday_count.
+        announce_dates = arrays[0].astype(datetime64D_dtype)
+
+        # Set masked values to NaT.
+        announce_dates[~mask] = np_NaT
+
+        # Convert row labels into a column vector for broadcasted comparison.
+        reference_dates = dates.values.astype(datetime64D_dtype)[:, newaxis]
+        return busday_count_mask_NaT(reference_dates, announce_dates)
+
 
 
 class BusinessDaysUntilNextEarnings(Factor):
@@ -39,23 +81,9 @@ class BusinessDaysUntilNextEarnings(Factor):
     zipline.pipeline.factors.BusinessDaysSincePreviousEarnings
     """
     inputs = [EarningsCalendar.next_announcement]
-    window_length = 0
-    dtype = float64_dtype
-
-    def _compute(self, arrays, dates, assets, mask):
-
-        # Coerce from [ns] to [D] for numpy busday_count.
-        announce_dates = arrays[0].astype(datetime64D_dtype)
-
-        # Set masked values to NaT.
-        announce_dates[~mask] = np_NaT
-
-        # Convert row labels into a column vector for broadcasted comparison.
-        reference_dates = dates.values.astype(datetime64D_dtype)[:, newaxis]
-        return busday_count_mask_NaT(reference_dates, announce_dates)
 
 
-class BusinessDaysSincePreviousEarnings(Factor):
+class BusinessDaysSincePreviousEarnings(BusinessDaysSincePreviousEvents):
     """
     Factor returning the number of **business days** (not trading days!) since
     the most recent earnings date for each asset.
@@ -75,17 +103,27 @@ class BusinessDaysSincePreviousEarnings(Factor):
     zipline.pipeline.factors.BusinessDaysUntilNextEarnings
     """
     inputs = [EarningsCalendar.previous_announcement]
-    window_length = 0
-    dtype = float64_dtype
 
-    def _compute(self, arrays, dates, assets, mask):
 
-        # Coerce from [ns] to [D] for numpy busday_count.
-        announce_dates = arrays[0].astype(datetime64D_dtype)
+class BusinessDaysSincePreviousBuybackAuth(BusinessDaysSincePreviousEvents):
+    """
+    Factor returning the number of **business days** (not trading days!) since
+    the most recent buyback authorization for each asset.
 
-        # Set masked values to NaT.
-        announce_dates[~mask] = np_NaT
+    This doesn't use trading days for symmetry with
+    BusinessDaysUntilNextEarnings.
 
-        # Convert row labels into a column vector for broadcasted comparison.
-        reference_dates = dates.values.astype(datetime64D_dtype)[:, newaxis]
-        return busday_count_mask_NaT(announce_dates, reference_dates)
+    Assets which announced or will announce buyback authorizations today will
+    produce a value of 0.0.
+    Assets that announced a buyback authorization on the previous business day
+    will produce a value of 1.0.
+
+    Assets for which `BuybackAuthorization.previous_announcement` is `NaT` will
+    produce a value of `NaN`.
+
+    See Also
+    --------
+    zipline.pipeline.factors.BusinessDaysUntilNextEarnings
+    """
+    inputs = [BuybackAuthorizations.previous_buyback_announcement]
+

@@ -4,6 +4,7 @@ from .dataset import DataSet, Column, BoundColumn
 
 __all__ = [
     'BoundColumn',
+    'BuybackAuth',
     'Column',
     'DataSet',
     'EarningsCalendar',

@@ -59,6 +59,7 @@ class EventsLoader(PipelineLoader):
                     )
                 # If we are passed a DatetimeIndex, we always have
                 # knowledge of the announcements.
+                # TODO: do we mean to be modifying the passed-in one?
                 events_by_sid[k] = pd.Series(
                     v, index=repeat(dates[0], len(v)),
                 )
@@ -98,11 +99,4 @@ class EventsLoader(PipelineLoader):
             adjustments=None,
         )
 
-    def load_adjusted_array(self, columns, dates, assets, mask):
-        return merge(
-            self.get_loader(column).load_adjusted_array(
-                [column], dates, assets, mask
-            )
-            for column in columns
-        )
 

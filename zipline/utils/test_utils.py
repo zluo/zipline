@@ -645,6 +645,21 @@ def to_series(knowledge_dates, earning_dates):
     )
 
 
+def to_dataframe(knowledge_dates, date_cols, other_cols):
+    """
+    Helper for converting a dict of strings to a pandas dataframe with
+    datetime cols converted as needed. date_cols should be a dict of column
+    names to the columns.
+
+    This is just for making the test cases more readable.
+    """
+    return pd.Series(
+        index=pd.to_datetime(knowledge_dates),
+        data={name: pd.to_datetime(col) for name, col in
+              date_cols.itervalues()}.update(other_cols),
+    )
+
+
 def num_days_in_range(dates, start, end):
     """
     Return the number of days in `dates` between start and end, inclusive.

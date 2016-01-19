@@ -12,6 +12,5 @@ class BuybackAuthorizations(DataSet):
     """
     previous_buyback_value = Column(float64_dtype)
     previous_buyback_share_count = Column(float64_dtype)
-    previous_buyback_value_announcement = Column(datetime64ns_dtype)
-    previous_buyback_share_count_announcement = Column(datetime64ns_dtype)
+    previous_buyback_announcement = Column(datetime64ns_dtype)
 
