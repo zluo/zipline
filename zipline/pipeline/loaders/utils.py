@@ -56,7 +56,52 @@ def next_date_frame(dates, events_by_sid):
     return pd.DataFrame(index=dates, data=cols)
 
 
+def next_value():
+    pass
+
+
 def previous_date_frame(date_index, events_by_sid):
+    """
+    Make a DataFrame representing simulated next earnings date_index.
+
+    Parameters
+    ----------
+    date_index : DatetimeIndex.
+        The index of the returned DataFrame.
+    events_by_sid : dict[int -> DatetimeIndex]
+        Dict mapping sids to a series of dates. Each k:v pair of the series
+        represents the date we learned of the event mapping to the date the
+        event will occur.
+
+    Returns
+    -------
+    previous_events: pd.DataFrame
+        A DataFrame where each column is a security from `events_by_sid` where
+        the values are the dates of the previous event that occured on the date
+        of the index. Entries falling before the first date will have `NaT` as
+        the result in the output.
+
+    See Also
+    --------
+    next_date_frame
+    """
+    sids = list(events_by_sid)
+    out = np.full((len(date_index), len(sids)), np_NaT, dtype='datetime64[ns]')
+    dn = date_index[-1].asm8
+    for col_idx, sid in enumerate(sids):
+        # events_by_sid[sid] is Series mapping knowledge_date to actual
+        # event_date.  We don't care about the knowledge date for
+        # computing previous earnings.
+        values = events_by_sid[sid].values
+        values = values[values <= dn]
+        out[date_index.searchsorted(values), col_idx] = values
+
+    frame = pd.DataFrame(out, index=date_index, columns=sids)
+    frame.ffill(inplace=True)
+    return frame
+
+
+def previous_value(date_index, events_by_sid):
     """
     Make a DataFrame representing simulated next earnings date_index.
 

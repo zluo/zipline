@@ -372,14 +372,14 @@ class EarningsCalendarLoaderInferTimestampTestCase(TestCase):
             infer_timestamps=True,
         )
         self.assertEqual(
-            loader.announcement_dates.keys(),
+            loader.events_by_sid.keys(),
             announcement_dates.keys(),
         )
         assert_series_equal(
-            loader.announcement_dates[0],
+            loader.events_by_sid[0],
             pd.Series(index=[dtx[0]] * 10, data=dtx),
         )
         assert_series_equal(
-            loader.announcement_dates[1],
+            loader.events_by_sid[1],
             announcement_dates[1],
         )

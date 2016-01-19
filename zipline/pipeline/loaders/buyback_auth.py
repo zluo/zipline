@@ -1,11 +1,12 @@
 """
 Reference implementation for EarningsCalendar loaders.
 """
-from functools import partial
 
 from events import EventsLoader
-from .utils import previous_date_frame
+from .frame import DataFrameLoader
+from .utils import previous_value
 from ..data.buyback_auth import BuybackAuthorizations
+from zipline.utils.memoize import lazyval
 
 
 class BuybackAuthorizationsLoader(EventsLoader):
@@ -18,31 +19,59 @@ class BuybackAuthorizationsLoader(EventsLoader):
 
     """
 
-    def __init__(self, dataset=None):
-        super(BuybackAuthorizationsLoader, self).__init__(dataset=BuybackAuthorizations)
+    def __init__(self, all_dates, events_by_sid, infer_timestamps=False,
+                dataset=BuybackAuthorizations):
+        super(BuybackAuthorizationsLoader, self).__init__(all_dates,
+                                                          events_by_sid,
+                                                          infer_timestamps,
+                                                          dataset=dataset)
+
 
     def get_loader(self, column):
         """dispatch to the loader for ``column``.
         """
 
         if column is self.dataset.previous_buyback_value:
-            return partial(self.date_frame_loader,
-                           self.dataset.previous_buyback_value,
-                           previous_date_frame)
+            return self.previous_buyback_value_loader
         elif column is self.dataset.previous_buyback_share_count:
-            return partial(self.date_frame_loader,
-                           self.dataset.previous_buyback_share_count,
-                           previous_date_frame)
+            return self.previous_buyback_share_count_loader
         elif column is self.dataset.previous_buyback_value_announcement:
-            return partial(self.date_frame_loader,
-                           self.dataset.previous_buyback_value_announcement,
-                           previous_date_frame)
+            return self.previous_buyback_value_announcement_loader
         elif column is self.dataset.previous_buyback_share_count_announcement:
-            return partial(self.date_frame_loader,
-                           self.dataset.previous_buyback_share_count_announcement,
-                           previous_date_frame)
+            return self.previous_buyback_share_count_announcement_loader
         else:
             raise ValueError("Don't know how to load column '%s'." % column)
 
 
+    @lazyval
+    def previous_buyback_value_announcement_loader(self):
+        return self._previous_announcement_loader(
+            self.dataset.previous_buyback_value_announcement)
+
+    @lazyval
+    def previous_buyback_share_count_announcement_loader(self):
+        return self._previous_announcement_loader(
+            self.dataset.previous_buyback_share_count_announcement)
+
+    @lazyval
+    def previous_buyback_share_count_loader(self):
+        return DataFrameLoader(
+            self.dataset.previous_buyback_share_count,
+            previous_value(
+                self.all_dates,
+                self.events_by_sid,
+            ),
+            adjustments=None,
+        )
+
+    @lazyval
+    def previous_buyback_value_loader(self):
+        return DataFrameLoader(
+            self.previous_buyback_value_loader,
+            previous_value(
+                self.all_dates,
+                self.events_by_sid,
+            ),
+            adjustments=None,
+        )
 
