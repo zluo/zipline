@@ -1,6 +1,7 @@
 import datetime
 
 import numpy as np
+from numpy import NaN
 import pandas as pd
 from six import iteritems
 from six.moves import zip
@@ -101,7 +102,7 @@ def previous_date_frame(date_index, events_by_sid):
     return frame
 
 
-def previous_value(date_index, events_by_sid):
+def previous_value(date_index, events_by_sid, event_date_field, value_field):
     """
     Make a DataFrame representing simulated next earnings date_index.
 
@@ -127,15 +128,17 @@ def previous_value(date_index, events_by_sid):
     next_date_frame
     """
     sids = list(events_by_sid)
-    out = np.full((len(date_index), len(sids)), np_NaT, dtype='datetime64[ns]')
+    out = np.full((len(date_index), len(sids)), NaN, dtype='float64')
     dn = date_index[-1].asm8
     for col_idx, sid in enumerate(sids):
-        # events_by_sid[sid] is Series mapping knowledge_date to actual
-        # event_date.  We don't care about the knowledge date for
-        # computing previous earnings.
-        values = events_by_sid[sid].values
-        values = values[values <= dn]
-        out[date_index.searchsorted(values), col_idx] = values
+        # events_by_sid[sid] is DataFrame mapping knowledge_date to event
+        # date and value.  We don't care about the knowledge date for computing
+        # previous values.
+        df = events_by_sid[sid]
+        df = df[df[event_date_field] <= dn]
+        out[date_index.searchsorted(np.array(df[event_date_field])), col_idx] =\
+            df[
+            value_field]
 
     frame = pd.DataFrame(out, index=date_index, columns=sids)
     frame.ffill(inplace=True)

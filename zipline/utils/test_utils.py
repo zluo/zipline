@@ -653,10 +653,11 @@ def to_dataframe(knowledge_dates, date_cols, other_cols):
 
     This is just for making the test cases more readable.
     """
-    return pd.Series(
+    data = {name: pd.to_datetime(col) for name, col in date_cols.iteritems()}
+    data.update(other_cols)
+    return pd.DataFrame(
         index=pd.to_datetime(knowledge_dates),
-        data={name: pd.to_datetime(col) for name, col in
-              date_cols.itervalues()}.update(other_cols),
+        data=data,
     )
 
 

@@ -6,6 +6,7 @@ from itertools import repeat
 import pandas as pd
 from six import iteritems
 
+from ..data.buyback_auth import BuybackAuthorizations
 from events import EventsLoader
 from .frame import DataFrameLoader
 from .utils import previous_value, previous_date_frame
@@ -29,7 +30,7 @@ class BuybackAuthorizationsLoader(EventsLoader):
                  all_dates,
                  events_by_sid,
                  infer_timestamps=False,
-                 dataset=None):
+                 dataset=BuybackAuthorizations):
         self.all_dates = all_dates
         self.events_by_sid = (
             events_by_sid.copy()
@@ -76,10 +77,11 @@ class BuybackAuthorizationsLoader(EventsLoader):
     @lazyval
     def previous_buyback_announcement_loader(self):
         return DataFrameLoader(
-            self.previous_buyback_share_count_announcement,
+            self.dataset.previous_buyback_announcement,
             previous_date_frame(
                 self.all_dates,
-                self.events_by_sid,
+                {sid: frame['buyback_dates'] for sid, frame in
+                 self.events_by_sid.iteritems()},
             ),
             adjustments=None,
         )
@@ -91,6 +93,8 @@ class BuybackAuthorizationsLoader(EventsLoader):
             previous_value(
                 self.all_dates,
                 self.events_by_sid,
+                'buyback_dates',
+                'share_counts'
             ),
             adjustments=None,
         )
@@ -98,10 +102,12 @@ class BuybackAuthorizationsLoader(EventsLoader):
     @lazyval
     def previous_buyback_value_loader(self):
         return DataFrameLoader(
-            self.previous_buyback_value_loader,
+            self.dataset.previous_buyback_value,
             previous_value(
                 self.all_dates,
                 self.events_by_sid,
+                'buyback_dates',
+                'values'
             ),
             adjustments=None,
         )

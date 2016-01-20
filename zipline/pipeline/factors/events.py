@@ -32,7 +32,7 @@ class BusinessDaysSincePreviousEvents(Factor):
 
         # Convert row labels into a column vector for broadcasted comparison.
         reference_dates = dates.values.astype(datetime64D_dtype)[:, newaxis]
-        return busday_count_mask_NaT(reference_dates, announce_dates)
+        return busday_count_mask_NaT(announce_dates, reference_dates)
 
 
 class BusinessDaysUntilNextEvents(Factor):
@@ -56,7 +56,7 @@ class BusinessDaysUntilNextEvents(Factor):
 
 
 
-class BusinessDaysUntilNextEarnings(Factor):
+class BusinessDaysUntilNextEarnings(BusinessDaysUntilNextEvents):
     """
     Factor returning the number of **business days** (not trading days!) until
     the next known earnings date for each asset.

@@ -8,7 +8,7 @@ from .core import (
     bind_expression_to_resources,
     ffill_query_in_range,
 )
-from zipline.pipeline.data import BuybackAuth
+from zipline.pipeline.data import BuybackAuthorizations
 from zipline.pipeline.loaders.base import PipelineLoader
 from zipline.pipeline.loaders.buyback_auth import BuybackAuthorizationsLoader
 from zipline.pipeline.loaders.utils import (
@@ -76,7 +76,7 @@ class BlazeBuybackAuthorizationsLoader(PipelineLoader):
                  odo_kwargs=None,
                  data_query_time=None,
                  data_query_tz=None,
-                 dataset=BuybackAuth):
+                 dataset=BuybackAuthorizations):
         dshape = expr.dshape
 
         if not istabular(dshape):
