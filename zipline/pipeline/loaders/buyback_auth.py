@@ -6,12 +6,17 @@ from itertools import repeat
 import pandas as pd
 from six import iteritems
 
+
 from ..data.buyback_auth import BuybackAuthorizations
 from events import EventsLoader
 from .frame import DataFrameLoader
 from .utils import previous_value, previous_date_frame
 from zipline.utils.memoize import lazyval
 
+
+BUYBACK_ANNOUNCEMENT_FIELD_NAME = 'buyback_dates'
+SHARE_COUNT_FIELD_NAME = 'share_counts'
+VALUE_FIELD_NAME = 'values'
 
 class BuybackAuthorizationsLoader(EventsLoader):
     """
@@ -21,7 +26,7 @@ class BuybackAuthorizationsLoader(EventsLoader):
     Does not currently support adjustments to the dates of known buyback
     authorizations.
 
-    events_by_sid: dict[sid -> field name -> pd.DataFrame(knowledge date,
+    events_by_sid: dict[sid -> pd.DataFrame(knowledge date,
     event date, value)]
 
     """
@@ -36,8 +41,10 @@ class BuybackAuthorizationsLoader(EventsLoader):
             events_by_sid.copy()
         )
         dates = self.all_dates.values
+        # TODO: what to do about this logic given that now I have a DataFrame
+        #  coming in, and I don't think df columns can be DatetimeIndex?
         for k, v in iteritems(events_by_sid):
-            if isinstance(v, pd.DatetimeIndex):
+            if isinstance(v[BUYBACK_ANNOUNCEMENT_FIELD_NAME], pd.DatetimeIndex):
                 if not infer_timestamps:
                     raise ValueError(
                         "Got DatetimeIndex of announcement dates for sid %d.\n"
@@ -80,7 +87,7 @@ class BuybackAuthorizationsLoader(EventsLoader):
             self.dataset.previous_buyback_announcement,
             previous_date_frame(
                 self.all_dates,
-                {sid: frame['buyback_dates'] for sid, frame in
+                {sid: frame[BUYBACK_ANNOUNCEMENT_FIELD_NAME] for sid, frame in
                  self.events_by_sid.iteritems()},
             ),
             adjustments=None,
@@ -93,8 +100,8 @@ class BuybackAuthorizationsLoader(EventsLoader):
             previous_value(
                 self.all_dates,
                 self.events_by_sid,
-                'buyback_dates',
-                'share_counts'
+                BUYBACK_ANNOUNCEMENT_FIELD_NAME,
+                SHARE_COUNT_FIELD_NAME
             ),
             adjustments=None,
         )
@@ -106,8 +113,8 @@ class BuybackAuthorizationsLoader(EventsLoader):
             previous_value(
                 self.all_dates,
                 self.events_by_sid,
-                'buyback_dates',
-                'values'
+                BUYBACK_ANNOUNCEMENT_FIELD_NAME,
+                VALUE_FIELD_NAME
             ),
             adjustments=None,
         )

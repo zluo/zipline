@@ -20,7 +20,9 @@ from zipline.utils.input_validation import ensure_timezone, optionally
 from zipline.utils.preprocess import preprocess
 
 
-ANNOUNCEMENT_FIELD_NAME = 'announcement_date'
+BUYBACK_ANNOUNCEMENT_FIELD_NAME = 'buyback_dates'
+SHARE_COUNT_FIELD_NAME = 'share_counts'
+VALUE_FIELD_NAME = 'values'
 
 
 class BlazeBuybackAuthorizationsLoader(PipelineLoader):
@@ -47,12 +49,14 @@ class BlazeBuybackAuthorizationsLoader(PipelineLoader):
        Dim * {{
            {SID_FIELD_NAME}: int64,
            {TS_FIELD_NAME}: datetime,
-           {ANNOUNCEMENT_FIELD_NAME}: ?datetime,
+           {BUYBACK_ANNOUNCEMENT_FIELD_NAME}: ?datetime,
+           {SHARE_COUNT_FIELD_NAME}: ?float64,
+           {VALUE_FIELD_NAME}: ?float64
        }}
 
     Where each row of the table is a record including the sid to identify the
-    company, the timestamp where we learned about the announcement, and the
-    date when the earnings will be announced.
+    company, the timestamp where we learned about the announcement, the
+    date when the buyback was announced, the share count, and the value.
 
     If the '{TS_FIELD_NAME}' field is not included it is assumed that we
     start the backtest with knowledge of all announcements.
@@ -60,13 +64,17 @@ class BlazeBuybackAuthorizationsLoader(PipelineLoader):
     __doc__ = __doc__.format(
         TS_FIELD_NAME=TS_FIELD_NAME,
         SID_FIELD_NAME=SID_FIELD_NAME,
-        ANNOUNCEMENT_FIELD_NAME=ANNOUNCEMENT_FIELD_NAME,
+        BUYBACK_ANNOUNCEMENT_FIELD_NAME=BUYBACK_ANNOUNCEMENT_FIELD_NAME,
+        SHARE_COUNT_FIELD_NAME=SHARE_COUNT_FIELD_NAME,
+        VALUE_FIELD_NAME=VALUE_FIELD_NAME
     )
 
     _expected_fields = frozenset({
         TS_FIELD_NAME,
         SID_FIELD_NAME,
-        ANNOUNCEMENT_FIELD_NAME,
+        BUYBACK_ANNOUNCEMENT_FIELD_NAME,
+        SHARE_COUNT_FIELD_NAME,
+        VALUE_FIELD_NAME
     })
 
     @preprocess(data_query_tz=optionally(ensure_timezone))
@@ -127,17 +135,12 @@ class BlazeBuybackAuthorizationsLoader(PipelineLoader):
 
         gb = raw.groupby(SID_FIELD_NAME)
 
-        def mkseries(idx, raw_loc=raw.loc):
-            vs = raw_loc[
-                idx, [TS_FIELD_NAME, ANNOUNCEMENT_FIELD_NAME]
-            ].values
-            return pd.Series(
-                index=pd.DatetimeIndex(vs[:, 0]),
-                data=vs[:, 1],
-            )
+        # Transform to input needed for BuybackAuthorizationsLoader (dict[sid
+        #  -> pd.DataFrame])
+        sid_to_dfs = {sid: raw.loc[group] for sid, group in gb.groups.iteritems()}
 
         return BuybackAuthorizationsLoader(
             dates,
-            valmap(mkseries, gb.groups),
+            sid_to_dfs,
             dataset=self._dataset,
         ).load_adjusted_array(columns, dates, assets, mask)

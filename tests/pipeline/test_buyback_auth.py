@@ -20,10 +20,12 @@ from zipline.pipeline.factors.events import (
 )
 from zipline.pipeline.loaders.buyback_auth import BuybackAuthorizationsLoader
 from zipline.pipeline.loaders.blaze import (
-    ANNOUNCEMENT_FIELD_NAME,
+    BUYBACK_ANNOUNCEMENT_FIELD_NAME,
     BlazeBuybackAuthorizationsLoader,
+    SHARE_COUNT_FIELD_NAME,
     SID_FIELD_NAME,
     TS_FIELD_NAME,
+    VALUE_FIELD_NAME
 )
 from zipline.utils.numpy_utils import make_datetime64D, np_NaT
 from zipline.utils.test_utils import (
@@ -58,33 +60,34 @@ class BuybackAuthLoaderTestCase(TestCase):
             # K1--K2--A1--A2--SC1--SC2--V1--V2.
             A: to_dataframe(
                 ['2014-01-05', '2014-01-10'],
-                {"buyback_dates": ['2014-01-15', '2014-01-20']},
-                {"share_counts": [1, 15],
-                 "values": [10, 20]}
+                {BUYBACK_ANNOUNCEMENT_FIELD_NAME: ['2014-01-15', '2014-01-20']},
+                {SHARE_COUNT_FIELD_NAME: [1, 15],
+                 VALUE_FIELD_NAME: [10, 20]}
             ),
             # K1--K2--E2--E1.
             B: to_dataframe(
                 ['2014-01-05', '2014-01-10'],
-                {"buyback_dates": ['2014-01-20', '2014-01-15']},
-                {"share_counts": [7, 13],
-                 "values": [10, 22]}
+                {BUYBACK_ANNOUNCEMENT_FIELD_NAME: ['2014-01-20', '2014-01-15']},
+                {SHARE_COUNT_FIELD_NAME: [7, 13],
+                 VALUE_FIELD_NAME: [10, 22]}
             ),
             # K1--E1--K2--E2.
             C: to_dataframe(
                 ['2014-01-05', '2014-01-15'],
-                {"buyback_dates": ['2014-01-10', '2014-01-20']},
-                {"share_counts": [3, 1],
-                 "values": [4, 7]}
+                {BUYBACK_ANNOUNCEMENT_FIELD_NAME: ['2014-01-10', '2014-01-20']},
+                {SHARE_COUNT_FIELD_NAME: [3, 1],
+                 VALUE_FIELD_NAME: [4, 7]}
             ),
             # K1 == K2.
             D: to_dataframe(
                 ['2014-01-05'] * 2,
-                {"buyback_dates": ['2014-01-10', '2014-01-15']},
-                {"share_counts": [6, 23],
-                 "values": [1, 2]}
+                {BUYBACK_ANNOUNCEMENT_FIELD_NAME: ['2014-01-10', '2014-01-15']},
+                {SHARE_COUNT_FIELD_NAME: [6, 23],
+                 VALUE_FIELD_NAME: [1, 2]}
             ),
             E: pd.DataFrame(
-                columns=["buyback_dates", "share_counts", "values"],
+                columns=[BUYBACK_ANNOUNCEMENT_FIELD_NAME,
+                         SHARE_COUNT_FIELD_NAME, VALUE_FIELD_NAME],
                 index=pd.DatetimeIndex([]),
                 dtype='datetime64[ns]'
             ),
@@ -331,57 +334,59 @@ class BuybackAuthLoaderTestCase(TestCase):
             )
 
 
-# class BlazeEarningsCalendarLoaderTestCase(EarningsCalendarLoaderTestCase):
-#     loader_type = BlazeEarningsCalendarLoader
-#
-#     def loader_args(self, dates):
-#         _, mapping = super(
-#             BlazeEarningsCalendarLoaderTestCase,
-#             self,
-#         ).loader_args(dates)
-#         return (bz.Data(pd.concat(
-#             pd.DataFrame({
-#                 ANNOUNCEMENT_FIELD_NAME: buyback_dates,
-#                 TS_FIELD_NAME: buyback_dates.index,
-#                 SID_FIELD_NAME: sid,
-#             })
-#             for sid, buyback_dates in iteritems(mapping)
-#         ).reset_index(drop=True)),)
+class BlazeBuybackAuthLoaderTestCase(BuybackAuthLoaderTestCase):
+    loader_type = BlazeBuybackAuthorizationsLoader
+
+    def loader_args(self, dates):
+        _, mapping = super(
+            BlazeBuybackAuthLoaderTestCase,
+            self,
+        ).loader_args(dates)
+        return (bz.Data(pd.concat(
+            pd.DataFrame({
+                BUYBACK_ANNOUNCEMENT_FIELD_NAME: frame[BUYBACK_ANNOUNCEMENT_FIELD_NAME],
+                SHARE_COUNT_FIELD_NAME: frame[SHARE_COUNT_FIELD_NAME],
+                VALUE_FIELD_NAME: frame[VALUE_FIELD_NAME],
+                TS_FIELD_NAME: frame.index,
+                SID_FIELD_NAME: sid,
+            })
+            for sid, frame in iteritems(mapping)
+        ).reset_index(drop=True)),)
 
 
-# class BlazeEarningsCalendarLoaderNotInteractiveTestCase(
-#         BlazeEarningsCalendarLoaderTestCase):
-#     """Test case for passing a non-interactive symbol and a dict of resources.
-#     """
-#     def loader_args(self, dates):
-#         (bound_expr,) = super(
-#             BlazeEarningsCalendarLoaderNotInteractiveTestCase,
-#             self,
-#         ).loader_args(dates)
-#         return swap_resources_into_scope(bound_expr, {})
+
+class BlazeEarningsCalendarLoaderNotInteractiveTestCase(
+        BlazeBuybackAuthLoaderTestCase):
+    """Test case for passing a non-interactive symbol and a dict of resources.
+    """
+    def loader_args(self, dates):
+        (bound_expr,) = super(
+            BlazeEarningsCalendarLoaderNotInteractiveTestCase,
+            self,
+        ).loader_args(dates)
+        return swap_resources_into_scope(bound_expr, {})
 
 
-# class BuybackAuthLoaderInferTimestampTestCase(TestCase):
-#     def test_infer_timestamp(self):
-#         dtx = pd.date_range('2014-01-01', '2014-01-10')
-#         announcement_dates = {
-#             0: dtx,
-#             1: pd.Series(dtx, dtx),
-#         }
-#         loader = BuybackAuthorizationsLoader(
-#             dtx,
-#             announcement_dates,
-#             infer_timestamps=True,
-#         )
-#         self.assertEqual(
-#             loader.events_by_sid.keys(),
-#             announcement_dates.keys(),
-#         )
-#         assert_series_equal(
-#             loader.events_by_sid[0],
-#             pd.Series(index=[dtx[0]] * 10, data=dtx),
-#         )
-#         assert_series_equal(
-#             loader.events_by_sid[1],
-#             announcement_dates[1],
-#         )
+class BuybackAuthLoaderInferTimestampTestCase(TestCase):
+    def test_infer_timestamp(self):
+        dtx = pd.date_range('2014-01-01', '2014-01-10')
+        events_by_sid = {
+            0: pd.DataFrame({BUYBACK_ANNOUNCEMENT_FIELD_NAME: dtx}),
+            1: pd.DataFrame({BUYBACK_ANNOUNCEMENT_FIELD_NAME: pd.Series(dtx, dtx)}, index=dtx)}
+        loader = BuybackAuthorizationsLoader(
+            dtx,
+            events_by_sid,
+            infer_timestamps=True,
+        )
+        self.assertEqual(
+            loader.events_by_sid.keys(),
+            events_by_sid.keys(),
+        )
+        assert_series_equal(
+            loader.events_by_sid[0][BUYBACK_ANNOUNCEMENT_FIELD_NAME],
+            pd.Series(index=[dtx[0]] * 10, data=dtx),
+        )
+        assert_series_equal(
+            loader.events_by_sid[1][BUYBACK_ANNOUNCEMENT_FIELD_NAME],
+            events_by_sid[1][BUYBACK_ANNOUNCEMENT_FIELD_NAME],
+        )
