@@ -162,7 +162,7 @@ class ConstantInputTestCase(TestCase):
         self.loader = PrecomputedLoader(
             constants=self.constants,
             dates=self.dates,
-            assets=self.assets,
+            sids=self.assets,
         )
 
         self.asset_info = make_simple_equity_info(
@@ -368,7 +368,7 @@ class ConstantInputTestCase(TestCase):
         loader = PrecomputedLoader(
             constants=constants,
             dates=self.dates,
-            assets=self.assets,
+            sids=self.assets,
         )
         engine = SimplePipelineEngine(
             lambda column: loader, self.dates, self.asset_finder,
@@ -410,7 +410,7 @@ class ConstantInputTestCase(TestCase):
     def test_loader_given_multiple_columns(self):
 
         class Loader1DataSet1(DataSet):
-            col1 = Column(float32)
+            col1 = Column(float)
             col2 = Column(float32)
 
         class Loader1DataSet2(DataSet):
@@ -427,12 +427,12 @@ class ConstantInputTestCase(TestCase):
                       Loader1DataSet2.col2: 4}
         loader1 = RecordingPrecomputedLoader(constants=constants1,
                                              dates=self.dates,
-                                             assets=self.assets)
+                                             sids=self.assets)
         constants2 = {Loader2DataSet.col1: 5,
                       Loader2DataSet.col2: 6}
         loader2 = RecordingPrecomputedLoader(constants=constants2,
                                              dates=self.dates,
-                                             assets=self.assets)
+                                             sids=self.assets)
 
         engine = SimplePipelineEngine(
             lambda column:
