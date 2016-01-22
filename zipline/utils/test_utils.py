@@ -255,15 +255,15 @@ def chrange(start, stop):
 
     Returns
     -------
-    chars: iterable[str]
+    chars: list[str]
         Iterable of strings beginning with start and ending with stop.
 
     Example
     -------
-    >>> list(chrange('A', 'C'))
+    >>> chrange('A', 'C')
     ['A', 'B', 'C']
     """
-    return map(chr, range(ord(start), ord(stop) + 1))
+    return list(map(chr, range(ord(start), ord(stop) + 1)))
 
 
 def make_rotating_equity_info(num_assets,
