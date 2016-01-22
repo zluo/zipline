@@ -368,7 +368,7 @@ class ObjectIdentityTestCase(TestCase):
                 int_column = Column(dtype=int64_dtype, missing_value=3)
 
         self.assertTrue(
-            str(e.exception.message).startswith(
+            str(e.exception).startswith(
                 "Failed to create Column with name 'bad_column'"
             )
         )
