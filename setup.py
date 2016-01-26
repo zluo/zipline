@@ -230,11 +230,14 @@ def pre_setup():
         pip.main(['install', line])
 
 
+_build_requires = ('Cython', 'numpy', 'setuptools')
+
+
 def build_requires(conda_format=False):
     return [req for req in read_requirements('etc/requirements.txt',
                                              strict_bounds=True,
                                              conda_format=conda_format)
-            if any(bld_req in req for bld_req in ('Cython', 'numpy'))]
+            if any(bld_req in req for bld_req in _build_requires)]
 
 
 conda_build = os.path.basename(sys.argv[0]) == 'conda-build'
