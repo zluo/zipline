@@ -118,6 +118,7 @@ def _filter_requirements(lines_iter):
 
 REQ_UPPER_BOUNDS = {
     'numpy': '<1.10',
+    'bcolz': '<0.12',
 }
 
 
@@ -273,6 +274,6 @@ setup(
     ],
     install_requires=install_requires(conda_format=conda_build),
     extras_require=extras_requires(conda_format=conda_build),
-    build_requires=build_requires(conda_format=conda_build),
+    setup_requires=build_requires(conda_format=conda_build),
     url="http://zipline.io",
 )
