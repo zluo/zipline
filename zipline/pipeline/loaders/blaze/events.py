@@ -24,7 +24,7 @@ ANNOUNCEMENT_FIELD_NAME = 'announcement_date'
 
 
 class BlazeEarningsCalendarLoader(PipelineLoader):
-    """A pipeline loader for the ``EarningsCalendar`` dataset that loads
+    """An abstract pipeline loader for the events datasets that loads
     data from a blaze expression.
 
     Parameters
@@ -47,24 +47,25 @@ class BlazeEarningsCalendarLoader(PipelineLoader):
        Dim * {{
            {SID_FIELD_NAME}: int64,
            {TS_FIELD_NAME}: datetime,
-           {ANNOUNCEMENT_FIELD_NAME}: ?datetime,
        }}
 
-    Where each row of the table is a record including the sid to identify the
-    company, the timestamp where we learned about the announcement, and the
-    date when the earnings will be announced.
+    And other dataset-specific fields, where each row of the table is a
+    record including the sid to identify the company, the timestamp where we
+    learned about the announcement, and the date when the earnings will be
+    announced.
 
     If the '{TS_FIELD_NAME}' field is not included it is assumed that we
     start the backtest with knowledge of all announcements.
     """
-    __doc__ = super.__doc__.format(
-        ANNOUNCEMENT_FIELD_NAME=ANNOUNCEMENT_FIELD_NAME,
+
+    __doc__ = __doc__.format(
+        TS_FIELD_NAME=TS_FIELD_NAME,
+        SID_FIELD_NAME=SID_FIELD_NAME,
     )
 
     _expected_fields = frozenset({
         TS_FIELD_NAME,
         SID_FIELD_NAME,
-        ANNOUNCEMENT_FIELD_NAME,
     })
 
     @preprocess(data_query_tz=optionally(ensure_timezone))
@@ -74,7 +75,7 @@ class BlazeEarningsCalendarLoader(PipelineLoader):
                  odo_kwargs=None,
                  data_query_time=None,
                  data_query_tz=None,
-                 dataset=EarningsCalendar):
+                 dataset=None):
         dshape = expr.dshape
 
         if not istabular(dshape):

@@ -18,6 +18,7 @@ BUYBACK_ANNOUNCEMENT_FIELD_NAME = 'buyback_dates'
 SHARE_COUNT_FIELD_NAME = 'share_counts'
 VALUE_FIELD_NAME = 'values'
 
+
 class BuybackAuthorizationsLoader(EventsLoader):
     """
     Reference loader for
