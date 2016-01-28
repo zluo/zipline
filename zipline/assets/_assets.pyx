@@ -50,6 +50,7 @@ cdef class Asset:
 
     cdef readonly object start_date
     cdef readonly object end_date
+    cdef readonly object auto_close_date
     cdef public object first_traded
 
     cdef readonly object exchange
@@ -60,19 +61,21 @@ cdef class Asset:
                   object asset_name="",
                   object start_date=None,
                   object end_date=None,
+                  object auto_close_date=None,
                   object first_traded=None,
                   object exchange="",
                   *args,
                   **kwargs):
 
-        self.sid           = sid
-        self.sid_hash      = hash(sid)
-        self.symbol        = symbol
-        self.asset_name    = asset_name
-        self.exchange      = exchange
-        self.start_date    = start_date
-        self.end_date      = end_date
-        self.first_traded  = first_traded
+        self.sid             = sid
+        self.sid_hash        = hash(sid)
+        self.symbol          = symbol
+        self.asset_name      = asset_name
+        self.exchange        = exchange
+        self.start_date      = start_date
+        self.end_date        = end_date
+        self.auto_close_date = auto_close_date
+        self.first_traded    = first_traded
 
     def __int__(self):
         return self.sid
@@ -127,7 +130,7 @@ cdef class Asset:
 
     def __repr__(self):
         attrs = ('symbol', 'asset_name', 'exchange',
-                 'start_date', 'end_date', 'first_traded')
+                 'start_date', 'end_date', 'auto_close_date', 'first_traded')
         tuples = ((attr, repr(getattr(self, attr, None)))
                   for attr in attrs)
         strings = ('%s=%s' % (t[0], t[1]) for t in tuples)
@@ -146,6 +149,7 @@ cdef class Asset:
                                  self.asset_name,
                                  self.start_date,
                                  self.end_date,
+                                 self.auto_close_date,
                                  self.first_traded,
                                  self.exchange,))
 
@@ -159,6 +163,7 @@ cdef class Asset:
             'asset_name': self.asset_name,
             'start_date': self.start_date,
             'end_date': self.end_date,
+            'auto_close_date': self.auto_close_date,
             'first_traded': self.first_traded,
             'exchange': self.exchange,
         }
@@ -181,7 +186,7 @@ cdef class Equity(Asset):
 
     def __repr__(self):
         attrs = ('symbol', 'asset_name', 'exchange',
-                 'start_date', 'end_date', 'first_traded')
+                 'start_date', 'end_date', 'auto_close_date', 'first_traded')
         tuples = ((attr, repr(getattr(self, attr, None)))
                   for attr in attrs)
         strings = ('%s=%s' % (t[0], t[1]) for t in tuples)
@@ -227,7 +232,6 @@ cdef class Future(Asset):
     cdef readonly object root_symbol
     cdef readonly object notice_date
     cdef readonly object expiration_date
-    cdef readonly object auto_close_date
     cdef readonly object tick_size
     cdef readonly float multiplier
 
