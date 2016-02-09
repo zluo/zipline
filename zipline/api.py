@@ -17,7 +17,7 @@
 # methods (e.g. order). These are added to this namespace via the
 # decorator `api_methods` inside of algorithm.py.
 
-import zipline
+# import zipline
 from .finance import (commission, slippage)
 from .utils import math_utils, events
 
