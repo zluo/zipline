@@ -18,13 +18,14 @@ Edit the release date field to be today's date in the format:
    <month> <day>, <year>
 
 
-then include this file in ``docs/source/releases.rst``. New releases should
-appear at the top. The syntax for this is:
+for example, November 6, 2015.
+Remove the active development warning from the whatsnew, since it will no
+longer be pending release.
+Update the title of the release from "Development" to "Release x.x.x" and
+update the underline of the title to match the title's width.
 
-::
-
-   .. include:: whatsnew/<version>.txt
-
+If you are renaming the release at this point, you'll need to git mv the file
+and also update releases.rst to reference the renamed file.
 
 Updating the ``__version__``
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -39,12 +40,14 @@ To upgrade the version use the git tag command like:
 .. code-block:: bash
 
    $ git tag <major>.<minor>.<micro>
-   $ git push
-   $ git push --tags
+   $ git push && git push --tags
 
 
 This will push the the code and the tag information.
 
+Next, click the "Draft a new release" button on the `zipline releases page
+<https://github.com/quantopian/zipline/releases>`__.  For the new release,
+choose the tag you just pushed, and publish the release.
 
 Uploading PyPI packages
 ~~~~~~~~~~~~~~~~~~~~~~~
@@ -56,7 +59,7 @@ To build the ``sdist`` (source distribution) run:
 
 .. code-block:: bash
 
-   $ python setup.by sdist
+   $ python setup.py sdist
 
 
 from the zipline root. This will create a gzipped tarball that includes all the
@@ -141,32 +144,9 @@ Now that we have tested locally and on PyPI test, it is time to upload to PyPI:
 ``bdist``
 ^^^^^^^^^
 
-.. note::
-
-   If you are running on GNU/Linux, then you cannot upload any binary wheels.
-
-First, build the wheels locally with:
-
-.. code-block:: bash
-
-   $ python setup.py bdist_wheel
-
-
-Just like the ``sdist``, we need to ``cd`` into a clean directory and use a
-clean virtualenv. Then, test that the wheel was built successfully with:
-
-.. code-block:: bash
-
-   $ pip install <zipline_root>/dist/<wheel_name>
-   $ python -c 'import zipline;print(zipline.__version__)'
-
-The version number should be the same as the version you are releasing.
-We must repeat this process for both python 2 and 3.
-Once you have tested the package, it can be uploaded to PyPI with:
-
-.. code-block:: bash
-
-   $ python setup.py bdist_wheel upload
+Because zipline now supports multiple versions of numpy, we're not building
+binary wheels, since they are not tagged with the version of numpy with which
+they were compiled.
 
 Documentation
 ~~~~~~~~~~~~~
@@ -193,3 +173,50 @@ Once we are happy, push the updated docs to the GitHub ``gh-pages`` branch.
    $ git push origin gh-pages
 
 `zipline.io <http://www.zipline.io/index.html>`__ will update in a few moments.
+
+Uploading conda packages
+~~~~~~~~~~~~~~~~~~~~~~~~
+
+Travis and AppVeyor build zipline conda packages for us.  Once they have built
+and uploaded to anaconda.org the packages (and their dependencies) for the
+release commit to master, we should move those packages from the "ci" label to
+the "main" label.  You can do this from the anaconda.org web interface.  This
+is also a good time to remove all the old "ci" packages from anaconda.
+
+Travis and AppVeyor only build and upload linux-64 and win-64 packages.  We'll
+need to build and upload osx-64 packages manually on an OSX machine.
+
+To build the conda packages for zipline locally, run:
+
+.. code-block:: bash
+
+   $ python etc/conda_build_matrix.py
+
+If all of the builds succeed, then this will not print anything and exit with
+``EXIT_SUCCESS``. If there are build issues, we must address them and decide
+what to do.
+
+Once all of the builds in the matrix pass, we can upload them to anaconda with:
+
+.. code-block:: bash
+
+   $ python etc/conda_build_matrix.py --upload
+
+If you would like to test this command by uploading to a different user, this
+may be specified with the ``--user`` flag.
+
+Next Commit
+~~~~~~~~~~~
+
+Push a new commit post-release that adds the whatsnew for the next release,
+which should be titled according to a micro version increment. If that next
+release turns out to be a major/minor version increment, the file can be
+renamed when that's decided. You can use ``docs/source/whatsnew/skeleton.txt``
+as a template for the new file.
+
+Include the whatsnew file in ``docs/source/releases.rst``. New releases should
+appear at the top. The syntax for this is:
+
+::
+
+   .. include:: whatsnew/<version>.txt

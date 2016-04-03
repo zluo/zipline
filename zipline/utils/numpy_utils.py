@@ -1,6 +1,12 @@
 """
 Utilities for working with numpy arrays.
 """
+from datetime import datetime
+from warnings import (
+    catch_warnings,
+    filterwarnings,
+)
+
 from numpy import (
     broadcast,
     busday_count,
@@ -15,26 +21,87 @@ from toolz import flip
 
 uint8_dtype = dtype('uint8')
 bool_dtype = dtype('bool')
+
 int64_dtype = dtype('int64')
+
+float32_dtype = dtype('float32')
 float64_dtype = dtype('float64')
+
+complex128_dtype = dtype('complex128')
+
 datetime64D_dtype = dtype('datetime64[D]')
 datetime64ns_dtype = dtype('datetime64[ns]')
 
 make_datetime64ns = flip(datetime64, 'ns')
 make_datetime64D = flip(datetime64, 'D')
-np_NaT = make_datetime64ns('NaT')
+
+NaTmap = {
+    dtype('datetime64[%s]' % unit): datetime64('NaT', unit)
+    for unit in ('ns', 'us', 'ms', 's', 'm', 'D')
+}
+NaT_for_dtype = NaTmap.__getitem__
+NaTns = NaT_for_dtype(datetime64ns_dtype)
+NaTD = NaT_for_dtype(datetime64D_dtype)
+
 
 _FILLVALUE_DEFAULTS = {
+    bool_dtype: False,
+    float32_dtype: nan,
     float64_dtype: nan,
-    datetime64ns_dtype: np_NaT,
+    datetime64ns_dtype: NaTns,
 }
 
 
-def default_fillvalue_for_dtype(dtype):
+class NoDefaultMissingValue(Exception):
+    pass
+
+
+def make_kind_check(python_types, numpy_kind):
+    """
+    Make a function that checks whether a scalar or array is of a given kind
+    (e.g. float, int, datetime, timedelta).
+    """
+    def check(value):
+        if hasattr(value, 'dtype'):
+            return value.dtype.kind == numpy_kind
+        return isinstance(value, python_types)
+    return check
+
+
+is_float = make_kind_check(float, 'f')
+is_int = make_kind_check(int, 'i')
+is_datetime = make_kind_check(datetime, 'M')
+
+
+def coerce_to_dtype(dtype, value):
+    """
+    Make a value with the specified numpy dtype.
+
+    Only datetime64[ns] and datetime64[D] are supported for datetime dtypes.
+    """
+    name = dtype.name
+    if name.startswith('datetime64'):
+        if name == 'datetime64[D]':
+            return make_datetime64D(value)
+        elif name == 'datetime64[ns]':
+            return make_datetime64ns(value)
+        else:
+            raise TypeError(
+                "Don't know how to coerce values of dtype %s" % dtype
+            )
+    return dtype.type(value)
+
+
+def default_missing_value_for_dtype(dtype):
     """
     Get the default fill value for `dtype`.
     """
-    return _FILLVALUE_DEFAULTS[dtype]
+    try:
+        return _FILLVALUE_DEFAULTS[dtype]
+    except KeyError:
+        raise NoDefaultMissingValue(
+            "No default value registered for dtype %s." % dtype
+        )
 
 
 def repeat_first_axis(array, count):
@@ -127,7 +194,9 @@ def repeat_last_axis(array, count):
 _notNaT = make_datetime64D(0)
 
 
-def busday_count_mask_NaT(begindates, enddates, out=None):
+def busday_count_mask_NaT(begindates,
+                          enddates,
+                          out=None):
     """
     Simple of numpy.busday_count that returns `float` arrays rather than int
     arrays, and handles `NaT`s by returning `NaN`s where the inputs were `NaT`.
@@ -142,8 +211,8 @@ def busday_count_mask_NaT(begindates, enddates, out=None):
     if out is None:
         out = empty(broadcast(begindates, enddates).shape, dtype=float)
 
-    beginmask = (begindates == np_NaT)
-    endmask = (enddates == np_NaT)
+    beginmask = (begindates == NaTD)
+    endmask = (enddates == NaTD)
 
     out = busday_count(
         # Temporarily fill in non-NaT values.
@@ -155,3 +224,37 @@ def busday_count_mask_NaT(begindates, enddates, out=None):
     # Fill in entries where either comparison was NaT with nan in the output.
     out[beginmask | endmask] = nan
     return out
+
+
+class WarningContext(object):
+    """
+    Re-usable contextmanager for contextually managing warnings.
+    """
+    def __init__(self, *warning_specs):
+        self._warning_specs = warning_specs
+        self._catchers = []
+
+    def __enter__(self):
+        catcher = catch_warnings()
+        catcher.__enter__()
+        self._catchers.append(catcher)
+        for args, kwargs in self._warning_specs:
+            filterwarnings(*args, **kwargs)
+        return self
+
+    def __exit__(self, *exc_info):
+        catcher = self._catchers.pop()
+        return catcher.__exit__(*exc_info)
+
+
+def ignore_nanwarnings():
+    """
+    Helper for building a WarningContext that ignores warnings from numpy's
+    nanfunctions.
+    """
+    return WarningContext(
+        (
+            ('ignore',),
+            {'category': RuntimeWarning, 'module': 'numpy.lib.nanfunctions'},
+        )
+    )

@@ -4,18 +4,23 @@ Base class for Pipeline API  unittests.
 from functools import wraps
 from unittest import TestCase
 
+import numpy as np
 from numpy import arange, prod
 from pandas import date_range, Int64Index, DataFrame
 from six import iteritems
 
+from zipline.pipeline import TermGraph
 from zipline.pipeline.engine import SimplePipelineEngine
 from zipline.pipeline.term import AssetExists
-from zipline.utils.pandas_utils import explode
-from zipline.utils.test_utils import (
+from zipline.testing import (
+    check_arrays,
     ExplodingObject,
     make_simple_equity_info,
     tmp_asset_finder,
 )
+
+from zipline.utils.functional import dzip_exact
+from zipline.utils.pandas_utils import explode
 from zipline.utils.tradingcalendar import trading_day
 
 
@@ -112,6 +117,16 @@ class BasePipelineTestCase(TestCase):
             initial_workspace,
         )
 
+    def check_terms(self, terms, expected, initial_workspace, mask):
+        """
+        Compile the given terms into a TermGraph, compute it with
+        initial_workspace, and compare the results with ``expected``.
+        """
+        graph = TermGraph(terms)
+        results = self.run_graph(graph, initial_workspace, mask)
+        for key, (res, exp) in dzip_exact(results, expected).items():
+            check_arrays(res, exp)
+
     def build_mask(self, array):
         """
         Helper for constructing an AssetExists mask from a boolean-coercible
@@ -133,3 +148,21 @@ class BasePipelineTestCase(TestCase):
         Build a block of testing data from numpy.arange.
         """
         return arange(prod(shape), dtype=dtype).reshape(shape)
+
+    @with_default_shape
+    def randn_data(self, seed, shape):
+        """
+        Build a block of testing data from a seeded RandomState.
+        """
+        return np.random.RandomState(seed).randn(*shape)
+
+    @with_default_shape
+    def eye_mask(self, shape):
+        """
+        Build a mask using np.eye.
+        """
+        return ~np.eye(*shape, dtype=bool)
+
+    @with_default_shape
+    def ones_mask(self, shape):
+        return np.ones(shape, dtype=bool)

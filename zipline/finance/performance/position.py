@@ -32,14 +32,13 @@ Position Tracking
 """
 
 from __future__ import division
-from math import (
-    copysign,
-    floor,
-)
+from math import copysign
+from collections import OrderedDict
 
 from copy import copy
 
 import logbook
+import numpy as np
 import zipline.protocol as zp
 
 from zipline.utils.serialization_utils import (
@@ -71,7 +70,8 @@ class Position(object):
         # stock dividend
         if dividend['payment_sid']:
             out['payment_sid'] = dividend['payment_sid']
-            out['share_count'] = floor(self.amount * float(dividend['ratio']))
+            out['share_count'] = np.floor(self.amount
+                                          * float(dividend['ratio']))
 
         # cash dividend
         if dividend['net_amount']:
@@ -106,7 +106,7 @@ class Position(object):
         raw_share_count = self.amount / float(ratio)
 
         # e.g., 33
-        full_share_count = floor(raw_share_count)
+        full_share_count = np.floor(raw_share_count)
 
         # e.g., 0.333
         fractional_share_count = raw_share_count - full_share_count
@@ -229,7 +229,7 @@ last_sale_price: {last_sale_price}"
         self.__dict__.update(state)
 
 
-class positiondict(dict):
+class positiondict(OrderedDict):
 
     def __missing__(self, key):
         pos = Position(key)

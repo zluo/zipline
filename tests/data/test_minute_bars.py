@@ -17,13 +17,23 @@ import os
 
 from unittest import TestCase
 
-from numpy import nan, array
-from numpy.testing import assert_almost_equal
+from numpy import (
+    arange,
+    array,
+    int64,
+    float64,
+    full,
+    nan,
+    zeros,
+)
+from numpy.testing import assert_almost_equal, assert_array_equal
 from pandas import (
     DataFrame,
     DatetimeIndex,
     Timestamp,
-    NaT
+    Timedelta,
+    NaT,
+    date_range,
 )
 from testfixtures import TempDirectory
 
@@ -46,11 +56,13 @@ class BcolzMinuteBarTestCase(TestCase):
     def setUpClass(cls):
         cls.env = TradingEnvironment()
         all_market_opens = cls.env.open_and_closes.market_open
+        all_market_closes = cls.env.open_and_closes.market_close
         indexer = all_market_opens.index.slice_indexer(
             start=TEST_CALENDAR_START,
             end=TEST_CALENDAR_STOP
         )
         cls.market_opens = all_market_opens[indexer]
+        cls.market_closes = all_market_closes[indexer]
         cls.test_calendar_start = cls.market_opens.index[0]
         cls.test_calendar_stop = cls.market_opens.index[-1]
 
@@ -64,6 +76,7 @@ class BcolzMinuteBarTestCase(TestCase):
             TEST_CALENDAR_START,
             self.dest,
             self.market_opens,
+            self.market_closes,
             US_EQUITIES_MINUTES_PER_DAY,
         )
         self.reader = BcolzMinuteBarReader(self.dest)
@@ -447,6 +460,86 @@ class BcolzMinuteBarTestCase(TestCase):
 
         self.assertEquals(100.0, volume_price)
 
+    def test_nans(self):
+        """
+        Test writing empty data.
+        """
+        sid = 1
+        last_date = self.writer.last_date_in_output_for_sid(sid)
+        self.assertIs(last_date, NaT)
+
+        self.writer.pad(sid, TEST_CALENDAR_START)
+
+        last_date = self.writer.last_date_in_output_for_sid(sid)
+        self.assertEqual(last_date, TEST_CALENDAR_START)
+
+        freq = self.market_opens.index.freq
+        minute = self.market_opens[TEST_CALENDAR_START + freq]
+        minutes = date_range(minute, periods=9, freq='min')
+        data = DataFrame(
+            data={
+                'open': full(9, nan),
+                'high': full(9, nan),
+                'low': full(9, nan),
+                'close': full(9, nan),
+                'volume': full(9, 0),
+            },
+            index=[minutes])
+        self.writer.write(sid, data)
+
+        fields = ['open', 'high', 'low', 'close', 'volume']
+
+        ohlcv_window = self.reader.unadjusted_window(
+            fields, minutes[0], minutes[-1], [sid])
+
+        for i, field in enumerate(fields):
+            if field != 'volume':
+                assert_array_equal(full(9, nan), ohlcv_window[i][0])
+            else:
+                assert_array_equal(zeros(9), ohlcv_window[i][0])
+
+    def test_differing_nans(self):
+        """
+        Also test nans of differing values/construction.
+        """
+        sid = 1
+        last_date = self.writer.last_date_in_output_for_sid(sid)
+        self.assertIs(last_date, NaT)
+
+        self.writer.pad(sid, TEST_CALENDAR_START)
+
+        last_date = self.writer.last_date_in_output_for_sid(sid)
+        self.assertEqual(last_date, TEST_CALENDAR_START)
+
+        freq = self.market_opens.index.freq
+        minute = self.market_opens[TEST_CALENDAR_START + freq]
+        minutes = date_range(minute, periods=9, freq='min')
+        data = DataFrame(
+            data={
+                'open': ((0b11111111111 << 52) + arange(1, 10, dtype=int64)).
+                view(float64),
+                'high': ((0b11111111111 << 52) + arange(11, 20, dtype=int64)).
+                view(float64),
+                'low': ((0b11111111111 << 52) + arange(21, 30, dtype=int64)).
+                view(float64),
+                'close': ((0b11111111111 << 52) + arange(31, 40, dtype=int64)).
+                view(float64),
+                'volume': full(9, 0),
+            },
+            index=[minutes])
+        self.writer.write(sid, data)
+
+        fields = ['open', 'high', 'low', 'close', 'volume']
+
+        ohlcv_window = self.reader.unadjusted_window(
+            fields, minutes[0], minutes[-1], [sid])
+
+        for i, field in enumerate(fields):
+            if field != 'volume':
+                assert_array_equal(full(9, nan), ohlcv_window[i][0])
+            else:
+                assert_array_equal(zeros(9), ohlcv_window[i][0])
+
     def test_write_cols(self):
         minute_0 = self.market_opens[self.test_calendar_start]
         minute_1 = minute_0 + timedelta(minutes=1)
@@ -500,3 +593,47 @@ class BcolzMinuteBarTestCase(TestCase):
         volume_price = self.reader.get_value(sid, minute_1, 'volume')
 
         self.assertEquals(51.0, volume_price)
+
+    def test_unadjusted_minutes(self):
+        """
+        Test unadjusted minutes.
+        """
+        start_minute = self.market_opens[TEST_CALENDAR_START]
+        minutes = [start_minute,
+                   start_minute + Timedelta('1 min'),
+                   start_minute + Timedelta('2 min')]
+        sids = [1, 2]
+        data_1 = DataFrame(
+            data={
+                'open': [15.0, nan, 15.1],
+                'high': [17.0, nan, 17.1],
+                'low': [11.0, nan, 11.1],
+                'close': [14.0, nan, 14.1],
+                'volume': [1000, 0, 1001]
+            },
+            index=minutes)
+        self.writer.write(sids[0], data_1)
+
+        data_2 = DataFrame(
+            data={
+                'open': [25.0, nan, 25.1],
+                'high': [27.0, nan, 27.1],
+                'low': [21.0, nan, 21.1],
+                'close': [24.0, nan, 24.1],
+                'volume': [2000, 0, 2001]
+            },
+            index=minutes)
+        self.writer.write(sids[1], data_2)
+
+        reader = BcolzMinuteBarReader(self.dest)
+
+        columns = ['open', 'high', 'low', 'close', 'volume']
+        sids = [sids[0], sids[1]]
+        arrays = reader.unadjusted_window(
+            columns, minutes[0], minutes[-1], sids)
+
+        data = {sids[0]: data_1, sids[1]: data_2}
+
+        for i, col in enumerate(columns):
+            for j, sid in enumerate(sids):
+                assert_almost_equal(data[sid][col], arrays[i][j])

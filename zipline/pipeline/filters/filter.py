@@ -13,19 +13,21 @@ from zipline.errors import (
     BadPercentileBounds,
     UnsupportedDataType,
 )
+from zipline.lib.rank import ismissing
 from zipline.pipeline.mixins import (
     CustomTermMixin,
+    LatestMixin,
     PositiveWindowLengthMixin,
+    RestrictedDTypeMixin,
     SingleInputMixin,
 )
-from zipline.pipeline.term import CompositeTerm
+from zipline.pipeline.term import ComputableTerm, Term
 from zipline.pipeline.expression import (
     BadBinaryOperator,
     FILTER_BINOPS,
     method_name_for_op,
     NumericalExpression,
 )
-from zipline.utils.control_flow import nullctx
 from zipline.utils.numpy_utils import bool_dtype
 
 
@@ -66,7 +68,9 @@ def binary_operator(op):
             # merging of inputs.  Look up and call the appropriate
             # right-binding operator with ourself as the input.
             return commuted_method_getter(other)(self)
-        elif isinstance(other, Filter):
+        elif isinstance(other, Term):
+            if other.dtype != bool_dtype:
+                raise BadBinaryOperator(op, self, other)
             if self is other:
                 return NumExprFilter.create(
                     "x_0 {op} x_0".format(op=op),
@@ -78,7 +82,7 @@ def binary_operator(op):
             )
         elif isinstance(other, int):  # Note that this is true for bool as well
             return NumExprFilter.create(
-                "x_0 {op} ({constant})".format(op=op, constant=int(other)),
+                "x_0 {op} {constant}".format(op=op, constant=int(other)),
                 binds=(self,),
             )
         raise BadBinaryOperator(op, self, other)
@@ -111,10 +115,55 @@ def unary_operator(op):
     return unary_operator
 
 
-class Filter(CompositeTerm):
+class Filter(RestrictedDTypeMixin, ComputableTerm):
     """
-    Pipeline API expression producing boolean-valued outputs.
+    Pipeline expression computing a boolean output.
+
+    Filters are most commonly useful for describing sets of assets to include
+    or exclude for some particular purpose. Many Pipeline API functions accept
+    a ``mask`` argument, which can be supplied a Filter indicating that only
+    values passing the Filter should be considered when performing the
+    requested computation. For example, :meth:`zipline.pipeline.Factor.top`
+    accepts a mask indicating that ranks should be computed only on assets that
+    passed the specified Filter.
+
+    The most common way to construct a Filter is via one of the comparison
+    operators (``<``, ``<=``, ``!=``, ``eq``, ``>``, ``>=``) of
+    :class:`~zipline.pipeline.Factor`. For example, a natural way to construct
+    a Filter for stocks with a 10-day VWAP less than $20.0 is to first
+    construct a Factor computing 10-day VWAP and compare it to the scalar value
+    20.0::
+
+        >>> from zipline.pipeline.factors import VWAP
+        >>> vwap_10 = VWAP(window_length=10)
+        >>> vwaps_under_20 = (vwap_10 <= 20)
+
+    Filters can also be constructed via comparisons between two Factors.  For
+    example, to construct a Filter producing True for asset/date pairs where
+    the asset's 10-day VWAP was greater than it's 30-day VWAP::
+
+        >>> short_vwap = VWAP(window_length=10)
+        >>> long_vwap = VWAP(window_length=30)
+        >>> higher_short_vwap = (short_vwap > long_vwap)
+
+    Filters can be combined via the ``&`` (and) and ``|`` (or) operators.
+
+    ``&``-ing together two filters produces a new Filter that produces True if
+    **both** of the inputs produced True.
+
+    ``|``-ing together two filters produces a new Filter that produces True if
+    **either** of its inputs produced True.
+
+    The ``~`` operator can be used to invert a Filter, swapping all True values
+    with Falses and vice-versa.
+
+    Filters may be set as the ``screen`` attribute of a Pipeline, indicating
+    asset/date pairs for which the filter produces False should be excluded
+    from the Pipeline's output.  This is useful both for reducing noise in the
+    output of a Pipeline and for reducing memory consumption of Pipeline
+    results.
     """
+    ALLOWED_DTYPES = (bool_dtype,)  # Used by RestrictedDTypeMixin
     dtype = bool_dtype
 
     clsdict = locals()
@@ -124,6 +173,13 @@ class Filter(CompositeTerm):
             for op in FILTER_BINOPS
         }
     )
+    clsdict.update(
+        {
+            method_name_for_op(op, commute=True): binary_operator(op)
+            for op in FILTER_BINOPS
+        }
+    )
+
     __invert__ = unary_operator('~')
 
     def _validate(self):
@@ -148,7 +204,7 @@ class NumExprFilter(NumericalExpression, Filter):
         """
         Helper for creating new NumExprFactors.
 
-        This is just a wrapper around NumExprFactor.__new__ that always
+        This is just a wrapper around NumericalExpression.__new__ that always
         forwards `bool` as the dtype, since Filters can only be of boolean
         dtype.
         """
@@ -164,6 +220,27 @@ class NumExprFilter(NumericalExpression, Filter):
             assets,
             mask,
         ) & mask
+
+
+class NullFilter(SingleInputMixin, Filter):
+    """
+    A Filter indicating whether input values are missing from an input.
+
+    Parameters
+    ----------
+    factor : zipline.pipeline.Factor
+        The factor to compare against its missing_value.
+    """
+    window_length = 0
+
+    def __new__(cls, factor):
+        return super(NullFilter, cls).__new__(
+            cls,
+            inputs=(factor,),
+        )
+
+    def _compute(self, arrays, dates, assets, mask):
+        return ismissing(arrays[0], self.inputs[0].missing_value)
 
 
 class PercentileFilter(SingleInputMixin, Filter):
@@ -245,6 +322,58 @@ class PercentileFilter(SingleInputMixin, Filter):
 
 class CustomFilter(PositiveWindowLengthMixin, CustomTermMixin, Filter):
     """
-    Filter analog to ``CustomFactor``.
+    Base class for user-defined Filters.
+
+    Parameters
+    ----------
+    inputs : iterable, optional
+        An iterable of `BoundColumn` instances (e.g. USEquityPricing.close),
+        describing the data to load and pass to `self.compute`.  If this
+        argument is passed to the CustomFilter constructor, we look for a
+        class-level attribute named `inputs`.
+    window_length : int, optional
+        Number of rows to pass for each input.  If this argument is not passed
+        to the CustomFilter constructor, we look for a class-level attribute
+        named `window_length`.
+
+    Notes
+    -----
+    Users implementing their own Filters should subclass CustomFilter and
+    implement a method named `compute` with the following signature:
+
+    .. code-block:: python
+
+        def compute(self, today, assets, out, *inputs):
+           ...
+
+    On each simulation date, ``compute`` will be called with the current date,
+    an array of sids, an output array, and an input array for each expression
+    passed as inputs to the CustomFilter constructor.
+
+    The specific types of the values passed to `compute` are as follows::
+
+        today : np.datetime64[ns]
+            Row label for the last row of all arrays passed as `inputs`.
+        assets : np.array[int64, ndim=1]
+            Column labels for `out` and`inputs`.
+        out : np.array[bool, ndim=1]
+            Output array of the same shape as `assets`.  `compute` should write
+            its desired return values into `out`.
+        *inputs : tuple of np.array
+            Raw data arrays corresponding to the values of `self.inputs`.
+
+    See the documentation for
+    :class:`~zipline.pipeline.factors.factor.CustomFactor` for more details on
+    implementing a custom ``compute`` method.
+
+    See Also
+    --------
+    zipline.pipeline.factors.factor.CustomFactor
     """
-    ctx = nullctx()
+
+
+class Latest(LatestMixin, CustomFilter):
+    """
+    Filter producing the most recently-known value of `inputs[0]` on each day.
+    """
+    pass

@@ -25,6 +25,7 @@ from six import iteritems
 from six.moves import range, map
 
 from zipline.finance.trading import TradingEnvironment
+from zipline.testing import subtest
 import zipline.utils.events
 from zipline.utils.events import (
     EventRule,
@@ -49,7 +50,6 @@ from zipline.utils.events import (
     MAX_MONTH_RANGE,
     MAX_WEEK_RANGE,
 )
-from zipline.utils.test_utils import subtest
 
 
 # A day known to be a half day.
@@ -266,7 +266,7 @@ class TestStatelessRules(RuleTestCase):
     @subtest(minutes_for_days(), 'ms')
     def test_Always(self, ms):
         should_trigger = partial(Always().should_trigger, env=self.env)
-        self.assertTrue(all(map(partial(should_trigger, env=self.env), ms)))
+        self.assertTrue(all(map(should_trigger, ms)))
 
     @subtest(minutes_for_days(), 'ms')
     def test_Never(self, ms):

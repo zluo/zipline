@@ -206,7 +206,7 @@ class BcolzDailyBarWriter(with_metaclass(ABCMeta)):
                 if column_name == 'id':
                     # We know what the content of this column is, so don't
                     # bother reading it.
-                    columns['id'].append(full((nrows,), asset_id))
+                    columns['id'].append(full((nrows,), asset_id, uint32))
                     continue
                 columns[column_name].append(
                     self.to_uint32(table[column_name][:], column_name)
@@ -302,8 +302,9 @@ class DailyBarWriterFromCSVs(BcolzDailyBarWriter):
             return array.astype(uint32)
         elif colname == 'day':
             nanos_per_second = (1000 * 1000 * 1000)
-            self.check_uint_safe(arrmax.view(int) / nanos_per_second, colname)
-            return (array.view(int) / nanos_per_second).astype(uint32)
+            self.check_uint_safe(arrmax.view(int64) / nanos_per_second,
+                                 colname)
+            return (array.view(int64) / nanos_per_second).astype(uint32)
 
     @staticmethod
     def check_uint_safe(value, colname):

@@ -1,5 +1,5 @@
 #
-# Copyright 2013 Quantopian, Inc.
+# Copyright 2016 Quantopian, Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -22,6 +22,7 @@ from pandas.io.data import DataReader
 import pytz
 
 from six import iteritems
+from six.moves.urllib_error import HTTPError
 
 from . benchmarks import get_benchmark_returns
 from . import treasuries, treasuries_can
@@ -155,7 +156,7 @@ def load_market_data(trading_day=trading_day_nyse,
     # before this date.
     last_date = trading_days[trading_days.get_loc(now, method='ffill') - 2]
 
-    benchmark_returns = ensure_benchmark_data(
+    br = ensure_benchmark_data(
         bm_symbol,
         first_date,
         last_date,
@@ -164,12 +165,14 @@ def load_market_data(trading_day=trading_day_nyse,
         # date so that we can compute returns for the first date.
         trading_day,
     )
-    treasury_curves = ensure_treasury_data(
+    tc = ensure_treasury_data(
         bm_symbol,
         first_date,
         last_date,
         now,
     )
+    benchmark_returns = br[br.index.slice_indexer(first_date, last_date)]
+    treasury_curves = tc[tc.index.slice_indexer(first_date, last_date)]
     return benchmark_returns, treasury_curves
 
 
@@ -239,8 +242,15 @@ def ensure_benchmark_data(symbol, first_date, last_date, now, trading_day):
         path=path,
     )
 
-    data = get_benchmark_returns(symbol, first_date - trading_day, last_date)
-    data.to_csv(path)
+    try:
+        data = get_benchmark_returns(
+            symbol,
+            first_date - trading_day,
+            last_date,
+        )
+        data.to_csv(path)
+    except (OSError, IOError, HTTPError):
+        logger.exception('failed to cache the new benchmark returns')
     if not has_data_for_dates(data, first_date, last_date):
         logger.warn("Still don't have expected data after redownload!")
     return data
@@ -306,8 +316,11 @@ def ensure_treasury_data(bm_symbol, first_date, last_date, now):
                 )
             )
 
-    data = loader_module.get_treasury_data(first_date, last_date)
-    data.to_csv(path)
+    try:
+        data = loader_module.get_treasury_data(first_date, last_date)
+        data.to_csv(path)
+    except (OSError, IOError, HTTPError):
+        logger.exception('failed to cache treasury data')
     if not has_data_for_dates(data, first_date, last_date):
         logger.warn("Still don't have expected data after redownload!")
     return data

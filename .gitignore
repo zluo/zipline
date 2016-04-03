@@ -25,6 +25,7 @@ test.log
 
 # Packages
 *.egg
+.eggs/*
 *.egg-info
 dist
 build
@@ -62,3 +63,6 @@ benchmarks.db
 # Intellij IDE temp project files
 .project
 zipline.iml
+
+# PyCharm custom settings
+.idea

@@ -5,12 +5,18 @@ import pandas as pd
 from six import iteritems
 from six.moves import zip
 
-from zipline.utils.numpy_utils import np_NaT
+from zipline.utils.numpy_utils import NaTns
 
 
-def next_date_frame(dates, events_by_sid):
+def next_event_frame(events_by_sid,
+                     dates,
+                     missing_value,
+                     field_dtype,
+                     event_date_field_name,
+                     return_field_name):
     """
-    Make a DataFrame representing the simulated next known date for an event.
+    Make a DataFrame representing the simulated next known dates or values
+    for an event.
 
     Parameters
     ----------
@@ -20,6 +26,9 @@ def next_date_frame(dates, events_by_sid):
         Dict mapping sids to a series of dates. Each k:v pair of the series
         represents the date we learned of the event mapping to the date the
         event will occur.
+    event_date_field_name : str
+        The name of the date field that marks when the event occurred.
+
     Returns
     -------
     next_events: pd.DataFrame
@@ -33,64 +42,101 @@ def next_date_frame(dates, events_by_sid):
     --------
     previous_date_frame
     """
-    cols = {
-        equity: np.full_like(dates, np_NaT) for equity in events_by_sid
+    date_cols = {
+        equity: np.full_like(dates, NaTns) for equity in events_by_sid
     }
+    value_cols = {
+        equity: np.full(len(dates), missing_value, dtype=field_dtype)
+        for equity in events_by_sid
+    }
+
     raw_dates = dates.values
-    for equity, event_dates in iteritems(events_by_sid):
-        data = cols[equity]
+    for equity, df in iteritems(events_by_sid):
+        event_dates = df[event_date_field_name]
+        values = df[return_field_name]
+        data = date_cols[equity]
         if not event_dates.index.is_monotonic_increasing:
             event_dates = event_dates.sort_index()
 
         # Iterate over the raw Series values, since we're comparing against
         # numpy arrays anyway.
-        iterkv = zip(event_dates.index.values, event_dates.values)
-        for knowledge_date, event_date in iterkv:
+        iter_date_vals = zip(event_dates.index.values, event_dates.values,
+                             values)
+        for knowledge_date, event_date, value in iter_date_vals:
             date_mask = (
                 (knowledge_date <= raw_dates) &
                 (raw_dates <= event_date)
             )
-            value_mask = (event_date <= data) | (data == np_NaT)
-            data[date_mask & value_mask] = event_date
+            value_mask = (event_date <= data) | (data == NaTns)
+            data_indices = np.where(date_mask & value_mask)
+            data[data_indices] = event_date
+            value_cols[equity][data_indices] = value
+    return pd.DataFrame(index=dates, data=value_cols)
 
-    return pd.DataFrame(index=dates, data=cols)
 
-
-def previous_date_frame(date_index, events_by_sid):
+def previous_event_frame(events_by_sid,
+                         date_index,
+                         missing_value,
+                         field_dtype,
+                         event_date_field,
+                         previous_return_field):
     """
-    Make a DataFrame representing simulated next earnings date_index.
+    Make a DataFrame representing simulated previous dates or values for an
+    event.
 
     Parameters
     ----------
-    date_index : DatetimeIndex.
-        The index of the returned DataFrame.
     events_by_sid : dict[int -> DatetimeIndex]
         Dict mapping sids to a series of dates. Each k:v pair of the series
         represents the date we learned of the event mapping to the date the
         event will occur.
+    date_index : DatetimeIndex.
+        The index of the returned DataFrame.
+    missing_value : any
+        Data which missing values should be filled with.
+    field_dtype: any
+        The dtype of the field for which the previous values are being
+        retrieved.
+    event_date_field: str
+        The name of the date field that marks when the event occurred.
+    return_field: str
+        The name of the field for which the previous values are being
+        retrieved.
 
     Returns
     -------
     previous_events: pd.DataFrame
-        A DataFrame where each column is a security from `events_by_sid` where
-        the values are the dates of the previous event that occured on the date
-        of the index. Entries falling before the first date will have `NaT` as
-        the result in the output.
+        A DataFrame where each column is a security from `events_by_sid` and
+        the values are the values for the previous event that occurred on the
+        date of the index. Entries falling before the first date will have
+        `missing_value` filled in as the result in the output.
 
     See Also
     --------
     next_date_frame
     """
     sids = list(events_by_sid)
-    out = np.full((len(date_index), len(sids)), np_NaT, dtype='datetime64[ns]')
-    dn = date_index[-1].asm8
+    out = np.full(
+        (len(date_index), len(sids)),
+        missing_value,
+        dtype=field_dtype
+    )
+    d_n = date_index[-1].asm8
     for col_idx, sid in enumerate(sids):
-        # events_by_sid[sid] is Series mapping knowledge_date to actual
-        # event_date.  We don't care about the knowledge date for
-        # computing previous earnings.
-        values = events_by_sid[sid].values
-        values = values[values <= dn]
-        out[date_index.searchsorted(values), col_idx] = values
+        # events_by_sid[sid] is a DataFrame mapping knowledge_date to event
+        # date and values.
+        df = events_by_sid[sid]
+        df = df[df[event_date_field] <= d_n]
+        event_date_vals = df[event_date_field].values
+        # Get knowledge dates corresponding to the values in which we are
+        # interested
+        kd_vals = df[df[event_date_field] <= d_n].index.values
+        # The date at which a previous event is first known is the max of the
+        #  kd and the event date.
+        index_dates = np.maximum(kd_vals, event_date_vals)
+        out[
+            date_index.searchsorted(index_dates), col_idx
+        ] = df[previous_return_field]
 
     frame = pd.DataFrame(out, index=date_index, columns=sids)
     frame.ffill(inplace=True)
@@ -228,3 +274,57 @@ def check_data_query_args(data_query_time, data_query_tz):
                 data_query_tz,
             ),
         )
+
+
+def zip_with_floats(dates, flts):
+        return pd.Series(flts, index=dates, dtype='float')
+
+
+def num_days_in_range(dates, start, end):
+    """
+    Return the number of days in `dates` between start and end, inclusive.
+    """
+    start_idx, stop_idx = dates.slice_locs(start, end)
+    return stop_idx - start_idx
+
+
+def zip_with_dates(index_dates, dts):
+    return pd.Series(pd.to_datetime(dts), index=index_dates)
+
+
+def get_values_for_date_ranges(zip_date_index_with_vals,
+                               vals_for_date_intervals,
+                               date_intervals,
+                               date_index):
+    """
+    Returns a Series of values indexed by date based on values for the given
+    date intervals.
+
+    Parameters
+    ----------
+    zip_date_index_with_vals : callable
+        A function that takes in a list of dates and a list of values and
+        returns a pd.Series with the values indexed by the dates.
+    vals_for_date_intervals : list
+        A list of values for each date interval in `date_intervals`.
+    date_intervals : list
+        A list of pairs of dates, where each pair represents a date interval
+        that corresponds to the value at the same index in
+        `vals_for_date_intervals`.
+    date_index : DatetimeIndex
+        The DatetimeIndex containing all dates for which values were requested.
+
+    Returns
+    -------
+    date_index_with_vals : pd.Series
+        A Series indexed by the given DatetimeIndex and with values assigned
+        to dates based on the given date intervals.
+    """
+    # Fill in given values for given date ranges.
+    return zip_date_index_with_vals(
+        date_index,
+        np.repeat(vals_for_date_intervals,
+                  [num_days_in_range(date_index, *date_interval)
+                   for date_interval in
+                   date_intervals]),
+    )
