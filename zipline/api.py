@@ -31,7 +31,7 @@ from zipline.utils.events import (
     time_rules
 )
 
-batch_transform = zipline.transforms.BatchTransform
+from zipline.transforms import BatchTransform as batch_transform
 
 
 __all__ = [

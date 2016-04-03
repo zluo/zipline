@@ -16,33 +16,34 @@
 
 # This is *not* a place to dump arbitrary classes/modules for convenience,
 # it is a place to expose the public interfaces.
-# from zipline import data
-# from zipline import finance
-# from zipline import gens
-# from zipline import utils
-# from zipline import transforms
-# from zipline._version import get_versions
-# # These need to happen after the other imports.
-# from . algorithm import TradingAlgorithm
-# from . import api
+from zipline import data
+from zipline import finance
+from zipline import gens
+from zipline import utils
+from zipline import transforms
+from zipline._version import get_versions
 
-# __version__ = get_versions()['version']
-# del get_versions
-# 
-# try:
-#     ip = get_ipython()  # flake8: noqa
-# except NameError:
-#     pass
-# else:
-#     ip.register_magic_function(utils.parse_cell_magic, "line_cell", "zipline")
-#     del ip
-# 
-# __all__ = [
-#     'data',
-#     'finance',
-#     'gens',
-#     'utils',
-#     'transforms',
-#     'api',
-#     'TradingAlgorithm',
-# ]
+# These need to happen after the other imports.
+from . algorithm import TradingAlgorithm
+from . import api
+
+__version__ = get_versions()['version']
+del get_versions
+ 
+try:
+    ip = get_ipython()  # flake8: noqa
+except NameError:
+    pass
+else:
+    ip.register_magic_function(utils.parse_cell_magic, "line_cell", "zipline")
+    del ip
+ 
+__all__ = [
+    'data',
+    'finance',
+    'gens',
+    'utils',
+    'transforms',
+    'api',
+    'TradingAlgorithm',
+]

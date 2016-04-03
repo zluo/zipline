@@ -18,10 +18,12 @@ from zipline.api import order, record, symbol
 
 
 def initialize(context):
+    print context
     pass
 
 
 def handle_data(context, data):
+    #print '.'
     order(symbol('AAPL'), 10)
     record(AAPL=data[symbol('AAPL')].price)
 
