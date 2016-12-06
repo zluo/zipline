@@ -187,6 +187,7 @@ class NumericalExpression(ComputableTerm):
             inputs=binds,
             expr=expr,
             dtype=dtype,
+            window_safe=all(t.window_safe for t in binds),
         )
 
     def _init(self, expr, *args, **kwargs):
@@ -194,9 +195,9 @@ class NumericalExpression(ComputableTerm):
         return super(NumericalExpression, self)._init(*args, **kwargs)
 
     @classmethod
-    def static_identity(cls, expr, *args, **kwargs):
+    def _static_identity(cls, expr, *args, **kwargs):
         return (
-            super(NumericalExpression, cls).static_identity(*args, **kwargs),
+            super(NumericalExpression, cls)._static_identity(*args, **kwargs),
             expr,
         )
 

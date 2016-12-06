@@ -18,7 +18,7 @@ from numpy import apply_along_axis, float64, isnan, nan
 from scipy.stats import rankdata
 
 from zipline.utils.numpy_utils import (
-    is_float,
+    is_missing,
     float64_dtype,
     int64_dtype,
     datetime64ns_dtype,
@@ -28,13 +28,11 @@ from zipline.utils.numpy_utils import (
 import_array()
 
 
-cpdef ismissing(ndarray data, object missing_value):
+def rankdata_1d_descending(ndarray data, str method):
     """
-    Generic ismissing function that handles quirks with NaN.
+    1D descending version of scipy.stats.rankdata.
     """
-    if is_float(data) and isnan(missing_value):
-        return isnan(data)
-    return (data == missing_value)
+    return rankdata(-(data.view(float64)), method=method)
 
 
 def masked_rankdata_2d(ndarray data,
@@ -51,7 +49,7 @@ def masked_rankdata_2d(ndarray data,
             "Can't compute rankdata on array of dtype %r." % dtype_name
         )
 
-    cdef ndarray missing_locations = (~mask | ismissing(data, missing_value))
+    cdef ndarray missing_locations = (~mask | is_missing(data, missing_value))
 
     # Interpret the bytes of integral data as floats for sorting.
     data = data.copy().view(float64)

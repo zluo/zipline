@@ -16,25 +16,20 @@ import os
 from collections import OrderedDict
 
 import logbook
-
 import pandas as pd
-from pandas.io.data import DataReader
+from pandas_datareader.data import DataReader
 import pytz
-
 from six import iteritems
 from six.moves.urllib_error import HTTPError
 
-from . benchmarks import get_benchmark_returns
+from .benchmarks import get_benchmark_returns
 from . import treasuries, treasuries_can
-from .paths import (
+from ..utils.paths import (
     cache_root,
     data_root,
 )
-
-from zipline.utils.tradingcalendar import (
-    trading_day as trading_day_nyse,
-    trading_days as trading_days_nyse,
-)
+from ..utils.deprecate import deprecated
+from zipline.utils.calendars import get_calendar
 
 logger = logbook.Logger('Loader')
 
@@ -96,9 +91,7 @@ def has_data_for_dates(series_or_df, first_date, last_date):
     return (first <= first_date) and (last >= last_date)
 
 
-def load_market_data(trading_day=trading_day_nyse,
-                     trading_days=trading_days_nyse,
-                     bm_symbol='^GSPC'):
+def load_market_data(trading_day=None, trading_days=None, bm_symbol='^GSPC'):
     """
     Load benchmark returns and treasury yield curves for the given calendar and
     benchmark symbol.
@@ -137,6 +130,11 @@ def load_market_data(trading_day=trading_day_nyse,
     '1month', '3month', '6month',
     '1year','2year','3year','5year','7year','10year','20year','30year'
     """
+    if trading_day is None:
+        trading_day = get_calendar('NYSE').trading_day
+    if trading_days is None:
+        trading_days = get_calendar('NYSE').all_sessions
+
     first_date = trading_days[0]
     now = pd.Timestamp.utcnow()
 
@@ -251,6 +249,7 @@ def ensure_benchmark_data(symbol, first_date, last_date, now, trading_day):
         data.to_csv(path)
     except (OSError, IOError, HTTPError):
         logger.exception('failed to cache the new benchmark returns')
+        raise
     if not has_data_for_dates(data, first_date, last_date):
         logger.warn("Still don't have expected data after redownload!")
     return data
@@ -413,6 +412,10 @@ def load_from_yahoo(indexes=None,
     return df
 
 
+@deprecated(
+    'load_bars_from_yahoo is deprecated, please register a'
+    ' yahoo_equities data bundle instead',
+)
 def load_bars_from_yahoo(indexes=None,
                          stocks=None,
                          start=None,

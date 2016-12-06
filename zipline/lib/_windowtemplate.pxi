@@ -2,8 +2,8 @@
 Template for AdjustedArray windowed iterators.
 
 This file is intended to be used by inserting it via a Cython include into a
-file that's define a type symbol named `ctype` and string constant named
-`dtype`.
+file that's defined a type symbol named `databuffer` that can be used like a
+2-D numpy array.
 
 See Also
 --------
@@ -12,9 +12,11 @@ zipline.lib._intwindow
 zipline.lib._datewindow
 """
 from numpy cimport ndarray
-from numpy import asarray
+from numpy import asanyarray
 
-ctypedef ctype[:, :] databuffer
+
+class Exhausted(Exception):
+    pass
 
 
 cdef class AdjustedArrayWindow:
@@ -33,29 +35,42 @@ cdef class AdjustedArrayWindow:
     """
     cdef:
         # ctype must be defined by the file into which this is being copied.
-        databuffer data
-        object viewtype
+        readonly databuffer data
+        readonly dict view_kwargs
         readonly Py_ssize_t window_length
         Py_ssize_t anchor, max_anchor, next_adj
+        Py_ssize_t perspective_offset
         dict adjustments
         list adjustment_indices
+        ndarray output
 
     def __cinit__(self,
                   databuffer data not None,
-                  object viewtype not None,
+                  dict view_kwargs not None,
                   dict adjustments not None,
                   Py_ssize_t offset,
-                  Py_ssize_t window_length):
-
+                  Py_ssize_t window_length,
+                  Py_ssize_t perspective_offset):
         self.data = data
-        self.viewtype = viewtype
+        self.view_kwargs = view_kwargs
         self.adjustments = adjustments
         self.adjustment_indices = sorted(adjustments, reverse=True)
         self.window_length = window_length
-        self.anchor = window_length + offset
+        self.anchor = window_length + offset - 1
+        if perspective_offset > 1:
+            # Limit perspective_offset to 1.
+            # To support an offset greater than 1, work must be done to
+            # ensure that adjustments are retrieved for the datetimes between
+            # the end of the window and the vantage point defined by the
+            # perspective offset.
+            raise Exception("perspective_offset should not exceed 1, value "
+                            "is perspective_offset={0}".format(
+                                perspective_offset))
+        self.perspective_offset = perspective_offset
         self.max_anchor = data.shape[0]
 
         self.next_adj = self.pop_next_adj()
+        self.output = None
 
     cdef pop_next_adj(self):
         """
@@ -64,37 +79,67 @@ cdef class AdjustedArrayWindow:
         if len(self.adjustment_indices) > 0:
             return self.adjustment_indices.pop()
         else:
-            return self.max_anchor
+            return self.max_anchor + self.perspective_offset
 
     def __iter__(self):
         return self
 
     def __next__(self):
-        cdef:
-            ndarray out
-            object adjustment
-            Py_ssize_t start, anchor
-
-        anchor = self.anchor
-        if anchor > self.max_anchor:
+        try:
+            self._tick_forward(1)
+        except Exhausted:
             raise StopIteration()
+
+        self._update_output()
+        return self.output
+
+    def seek(self, Py_ssize_t target_anchor):
+        cdef:
+            Py_ssize_t anchor = self.anchor
+
+        if target_anchor < anchor:
+            raise Exception('Can not access data after window has passed.')
+
+        if target_anchor == anchor:
+            return self.output
+
+        self._tick_forward(target_anchor - anchor)
+        self._update_output()
+
+        return self.output
+
+    cdef inline _tick_forward(self, int N):
+        cdef:
+            object adjustment
+            Py_ssize_t anchor = self.anchor
+            Py_ssize_t target = anchor + N
+
+        if target > self.max_anchor:
+            raise Exhausted()
 
         # Apply any adjustments that occured before our current anchor.
         # Equivalently, apply any adjustments known **on or before** the date
         # for which we're calculating a window.
-        while self.next_adj < anchor:
+        while self.next_adj < target + self.perspective_offset:
 
             for adjustment in self.adjustments[self.next_adj]:
                 adjustment.mutate(self.data)
 
             self.next_adj = self.pop_next_adj()
 
-        start = anchor - self.window_length
-        out = asarray(self.data[start:self.anchor]).view(self.viewtype)
-        out.setflags(write=False)
+        self.anchor = target
 
-        self.anchor += 1
-        return out
+    cdef inline _update_output(self):
+        cdef:
+            ndarray new_out
+            Py_ssize_t anchor = self.anchor
+            dict view_kwargs = self.view_kwargs
+
+        new_out = asanyarray(self.data[anchor - self.window_length:anchor])
+        if view_kwargs:
+            new_out = new_out.view(**view_kwargs)
+        new_out.setflags(write=False)
+        self.output = new_out
 
     def __repr__(self):
         return "<%s: window_length=%d, anchor=%d, max_anchor=%d, dtype=%r>" % (
@@ -102,5 +147,5 @@ cdef class AdjustedArrayWindow:
             self.window_length,
             self.anchor,
             self.max_anchor,
-            self.viewtype,
+            self.view_kwargs.get('dtype'),
         )

@@ -25,9 +25,9 @@ def delimit(delimiters, content):
     """
     Surround `content` with the first and last characters of `delimiters`.
 
-    >>> delimit('[]', "foo")
-    [foo]
-    >>> delimit('""', "foo")
+    >>> delimit('[]', "foo")  # doctest: +SKIP
+    '[foo]'
+    >>> delimit('""', "foo")  # doctest: +SKIP
     '"foo"'
     """
     if len(delimiters) != 2:
@@ -115,13 +115,14 @@ def _render(g, out, format_, include_asset_exists=False):
                 add_term_node(f, term)
 
         # Write intermediate results.
-        for term in filter_nodes(include_asset_exists, topological_sort(g)):
+        for term in filter_nodes(include_asset_exists,
+                                 topological_sort(g.graph)):
             if term in in_nodes or term in out_nodes:
                 continue
             add_term_node(f, term)
 
         # Write edges
-        for source, dest in g.edges():
+        for source, dest in g.graph.edges():
             if source is AssetExists() and not include_asset_exists:
                 continue
             add_edge(f, id(source), id(dest))
@@ -220,7 +221,7 @@ def format_attrs(attrs):
 
     Example
     -------
-    >>> format_attrs({'key1': 'value1', 'key2': 'value2'})
+    >>> format_attrs({'key1': 'value1', 'key2': 'value2'})  # doctest: +SKIP
     '[key1=value1, key2=value2]'
     """
     if not attrs:

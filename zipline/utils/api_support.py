@@ -48,7 +48,13 @@ def api_method(f):
     @wraps(f)
     def wrapped(*args, **kwargs):
         # Get the instance and call the method
-        return getattr(get_algo_instance(), f.__name__)(*args, **kwargs)
+        algo_instance = get_algo_instance()
+        if algo_instance is None:
+            raise RuntimeError(
+                'zipline api method %s must be called during a simulation.'
+                % f.__name__
+            )
+        return getattr(algo_instance, f.__name__)(*args, **kwargs)
     # Add functor to zipline.api
     setattr(zipline.api, f.__name__, wrapped)
     zipline.api.__all__.append(f.__name__)
@@ -94,6 +100,28 @@ def require_initialized(exception):
         @wraps(method)
         def wrapped_method(self, *args, **kwargs):
             if not self.initialized:
+                raise exception
+            return method(self, *args, **kwargs)
+        return wrapped_method
+    return decorator
+
+
+def disallowed_in_before_trading_start(exception):
+    """
+    Decorator for API methods that cannot be called from within
+    TradingAlgorithm.before_trading_start.  `exception` will be raised if the
+    method is called inside `before_trading_start`.
+
+    Usage
+    -----
+    @disallowed_in_before_trading_start(SomeException("Don't do that!"))
+    def method(self):
+        # Do stuff that is not allowed inside before_trading_start.
+    """
+    def decorator(method):
+        @wraps(method)
+        def wrapped_method(self, *args, **kwargs):
+            if self._in_before_trading_start:
                 raise exception
             return method(self, *args, **kwargs)
         return wrapped_method

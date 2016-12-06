@@ -1,7 +1,8 @@
 """
 Tests for chunked adjustments.
 """
-from itertools import chain
+from collections import namedtuple
+from itertools import chain, product
 from textwrap import dedent
 from unittest import TestCase
 
@@ -9,26 +10,34 @@ from nose_parameterized import parameterized
 from numpy import (
     arange,
     array,
+    asarray,
+    dtype,
     full,
     where,
 )
-from numpy.testing import assert_array_equal
 from six.moves import zip_longest
+from toolz import curry
 
 from zipline.errors import WindowLengthNotPositive, WindowLengthTooLong
 from zipline.lib.adjustment import (
     Datetime64Overwrite,
+    Datetime641DArrayOverwrite,
     Float64Multiply,
     Float64Overwrite,
+    Float641DArrayOverwrite,
+    ObjectOverwrite,
 )
 from zipline.lib.adjusted_array import AdjustedArray, NOMASK
+from zipline.lib.labelarray import LabelArray
 from zipline.testing import check_arrays, parameter_space
+from zipline.utils.compat import unicode
 from zipline.utils.numpy_utils import (
     coerce_to_dtype,
     datetime64ns_dtype,
     default_missing_value_for_dtype,
     float64_dtype,
     int64_dtype,
+    object_dtype,
 )
 
 
@@ -62,12 +71,55 @@ def valid_window_lengths(underlying_buffer_length):
     return iter(range(1, underlying_buffer_length + 1))
 
 
-def _gen_unadjusted_cases(dtype):
+@curry
+def as_dtype(dtype, data):
+    """
+    Curried wrapper around array.astype for when you have the dtype before you
+    have the data.
+    """
+    return asarray(data).astype(dtype)
 
+
+@curry
+def as_labelarray(initial_dtype, missing_value, array):
+    """
+    Curried wrapper around LabelArray, that round-trips the input data through
+    `initial_dtype` first.
+    """
+    return LabelArray(
+        array.astype(initial_dtype),
+        missing_value=initial_dtype.type(missing_value),
+    )
+
+
+bytes_dtype = dtype('S3')
+unicode_dtype = dtype('U3')
+
+
+AdjustmentCase = namedtuple(
+    'AdjustmentCase',
+    [
+        'name',
+        'baseline',
+        'window_length',
+        'adjustments',
+        'missing_value',
+        'perspective_offset',
+        'expected_result',
+    ]
+)
+
+
+def _gen_unadjusted_cases(name,
+                          make_input,
+                          make_expected_output,
+                          missing_value):
     nrows = 6
     ncols = 3
-    data = arange(nrows * ncols).astype(dtype).reshape(nrows, ncols)
-    missing_value = default_missing_value_for_dtype(dtype)
+
+    raw_data = arange(nrows * ncols).reshape(nrows, ncols)
+    input_array = make_input(raw_data)
+    expected_output_array = make_expected_output(raw_data)
 
     for windowlen in valid_window_lengths(nrows):
 
@@ -75,14 +127,15 @@ def _gen_unadjusted_cases(dtype):
             windowlen, nrows
         )
 
-        yield (
-            "dtype_%s_length_%d" % (dtype, windowlen),
-            data,
-            windowlen,
-            {},
-            missing_value,
-            [
-                data[offset:offset + windowlen]
+        yield AdjustmentCase(
+            name="%s_length_%d" % (name, windowlen),
+            baseline=input_array,
+            window_length=windowlen,
+            adjustments={},
+            missing_value=missing_value,
+            perspective_offset=0,
+            expected_result=[
+                expected_output_array[offset:offset + windowlen]
                 for offset in range(num_legal_windows)
             ],
         )
@@ -93,7 +146,7 @@ def _gen_multiplicative_adjustment_cases(dtype):
     Generate expected moving windows on a buffer with adjustments.
 
     We proceed by constructing, at each row, the view of the array we expect in
-    in all windows anchored on or after that row.
+    in all windows anchored on that row.
 
     In general, if we have an adjustment to be applied once we process the row
     at index N, should see that adjustment applied to the underlying buffer for
@@ -156,7 +209,14 @@ def _gen_multiplicative_adjustment_cases(dtype):
                              [1,  6,  1],
                              [1,  1,  1]], dtype=dtype)
 
-    return _gen_expectations(baseline, adjustments, buffer_as_of, nrows)
+    return _gen_expectations(
+        baseline,
+        default_missing_value_for_dtype(dtype),
+        adjustments,
+        buffer_as_of,
+        nrows,
+        perspective_offsets=(0, 1),
+    )
 
 
 def _gen_overwrite_adjustment_cases(dtype):
@@ -166,96 +226,266 @@ def _gen_overwrite_adjustment_cases(dtype):
     The algorithm used here is the same as the one used above for
     multiplicative adjustments.  The only difference is the semantics of how
     the adjustments are expected to modify the arrays.
+
+    This is parameterized on `make_input` and `make_expected_output` functions,
+    which take 2-D lists of values and transform them into desired input/output
+    arrays. We do this so that we can easily test both vanilla numpy ndarrays
+    and our own LabelArray class for strings.
     """
     adjustment_type = {
         float64_dtype: Float64Overwrite,
         datetime64ns_dtype: Datetime64Overwrite,
+        bytes_dtype: ObjectOverwrite,
+        unicode_dtype: ObjectOverwrite,
+        object_dtype: ObjectOverwrite,
     }[dtype]
+    make_expected_dtype = as_dtype(dtype)
+    missing_value = default_missing_value_for_dtype(datetime64ns_dtype)
 
-    nrows, ncols = 6, 3
+    if dtype == object_dtype:
+        # When we're testing object dtypes, we expect to have strings, but
+        # coerce_to_dtype(object, 3) just gives 3 as a Python integer.
+        def make_overwrite_value(dtype, value):
+            return str(value)
+    else:
+        make_overwrite_value = coerce_to_dtype
+
     adjustments = {}
     buffer_as_of = [None] * 6
-    baseline = buffer_as_of[0] = full((nrows, ncols), 2, dtype=dtype)
+    baseline = make_expected_dtype([[2, 2, 2],
+                                    [2, 2, 2],
+                                    [2, 2, 2],
+                                    [2, 2, 2],
+                                    [2, 2, 2],
+                                    [2, 2, 2]])
+
+    buffer_as_of[0] = make_expected_dtype([[2, 2, 2],
+                                           [2, 2, 2],
+                                           [2, 2, 2],
+                                           [2, 2, 2],
+                                           [2, 2, 2],
+                                           [2, 2, 2]])
 
     # Note that row indices are inclusive!
     adjustments[1] = [
-        adjustment_type(0, 0, 0, 0, coerce_to_dtype(dtype, 1)),
+        adjustment_type(0, 0, 0, 0, make_overwrite_value(dtype, 1)),
     ]
-    buffer_as_of[1] = array([[1, 2, 2],
-                             [2, 2, 2],
-                             [2, 2, 2],
-                             [2, 2, 2],
-                             [2, 2, 2],
-                             [2, 2, 2]], dtype=dtype)
+    buffer_as_of[1] = make_expected_dtype([[1, 2, 2],
+                                           [2, 2, 2],
+                                           [2, 2, 2],
+                                           [2, 2, 2],
+                                           [2, 2, 2],
+                                           [2, 2, 2]])
 
     # No adjustment at index 2.
     buffer_as_of[2] = buffer_as_of[1]
 
     adjustments[3] = [
-        adjustment_type(1, 2, 1, 1, coerce_to_dtype(dtype, 3)),
-        adjustment_type(0, 1, 0, 0, coerce_to_dtype(dtype, 4)),
+        adjustment_type(1, 2, 1, 1, make_overwrite_value(dtype, 3)),
+        adjustment_type(0, 1, 0, 0, make_overwrite_value(dtype, 4)),
     ]
-    buffer_as_of[3] = array([[4, 2, 2],
-                             [4, 3, 2],
-                             [2, 3, 2],
-                             [2, 2, 2],
-                             [2, 2, 2],
-                             [2, 2, 2]], dtype=dtype)
+    buffer_as_of[3] = make_expected_dtype([[4, 2, 2],
+                                           [4, 3, 2],
+                                           [2, 3, 2],
+                                           [2, 2, 2],
+                                           [2, 2, 2],
+                                           [2, 2, 2]])
 
     adjustments[4] = [
-        adjustment_type(0, 3, 2, 2, coerce_to_dtype(dtype, 5))
+        adjustment_type(0, 3, 2, 2, make_overwrite_value(dtype, 5))
     ]
-    buffer_as_of[4] = array([[4, 2, 5],
-                             [4, 3, 5],
-                             [2, 3, 5],
-                             [2, 2, 5],
-                             [2, 2, 2],
-                             [2, 2, 2]], dtype=dtype)
+    buffer_as_of[4] = make_expected_dtype([[4, 2, 5],
+                                           [4, 3, 5],
+                                           [2, 3, 5],
+                                           [2, 2, 5],
+                                           [2, 2, 2],
+                                           [2, 2, 2]])
 
     adjustments[5] = [
-        adjustment_type(0, 4, 1, 1, coerce_to_dtype(dtype, 6)),
-        adjustment_type(2, 2, 2, 2, coerce_to_dtype(dtype, 7)),
+        adjustment_type(0, 4, 1, 1, make_overwrite_value(dtype, 6)),
+        adjustment_type(2, 2, 2, 2, make_overwrite_value(dtype, 7)),
     ]
-    buffer_as_of[5] = array([[4,  6,  5],
-                             [4,  6,  5],
-                             [2,  6,  7],
-                             [2,  6,  5],
-                             [2,  6,  2],
-                             [2,  2,  2]], dtype=dtype)
+    buffer_as_of[5] = make_expected_dtype([[4, 6, 5],
+                                           [4, 6, 5],
+                                           [2, 6, 7],
+                                           [2, 6, 5],
+                                           [2, 6, 2],
+                                           [2, 2, 2]])
 
     return _gen_expectations(
         baseline,
+        missing_value,
         adjustments,
         buffer_as_of,
-        nrows,
+        nrows=6,
+        perspective_offsets=(0, 1),
     )
 
 
-def _gen_expectations(baseline, adjustments, buffer_as_of, nrows):
+def _gen_overwrite_1d_array_adjustment_case(dtype):
+    """
+    Generate test cases for overwrite adjustments.
 
-    missing_value = default_missing_value_for_dtype(baseline.dtype)
-    for windowlen in valid_window_lengths(nrows):
+    The algorithm used here is the same as the one used above for
+    multiplicative adjustments.  The only difference is the semantics of how
+    the adjustments are expected to modify the arrays.
 
+    This is parameterized on `make_input` and `make_expected_output` functions,
+    which take 1-D lists of values and transform them into desired input/output
+    arrays. We do this so that we can easily test both vanilla numpy ndarrays
+    and our own LabelArray class for strings.
+    """
+    adjustment_type = {
+        float64_dtype: Float641DArrayOverwrite,
+        datetime64ns_dtype: Datetime641DArrayOverwrite,
+    }[dtype]
+    make_expected_dtype = as_dtype(dtype)
+    missing_value = default_missing_value_for_dtype(datetime64ns_dtype)
+
+    adjustments = {}
+    buffer_as_of = [None] * 6
+    baseline = make_expected_dtype([[2, 2, 2],
+                                    [2, 2, 2],
+                                    [2, 2, 2],
+                                    [2, 2, 2],
+                                    [2, 2, 2],
+                                    [2, 2, 2]])
+
+    buffer_as_of[0] = make_expected_dtype([[2, 2, 2],
+                                           [2, 2, 2],
+                                           [2, 2, 2],
+                                           [2, 2, 2],
+                                           [2, 2, 2],
+                                           [2, 2, 2]])
+
+    vals1 = [1]
+    # Note that row indices are inclusive!
+    adjustments[1] = [
+        adjustment_type(
+            0, 0, 0, 0,
+            array([coerce_to_dtype(dtype, val) for val in vals1])
+        )
+    ]
+    buffer_as_of[1] = make_expected_dtype([[1, 2, 2],
+                                           [2, 2, 2],
+                                           [2, 2, 2],
+                                           [2, 2, 2],
+                                           [2, 2, 2],
+                                           [2, 2, 2]])
+
+    # No adjustment at index 2.
+    buffer_as_of[2] = buffer_as_of[1]
+
+    vals3 = [4, 4, 1]
+    adjustments[3] = [
+        adjustment_type(
+            0, 2, 0, 0,
+            array([coerce_to_dtype(dtype, val) for val in vals3])
+        )
+    ]
+    buffer_as_of[3] = make_expected_dtype([[4, 2, 2],
+                                           [4, 2, 2],
+                                           [1, 2, 2],
+                                           [2, 2, 2],
+                                           [2, 2, 2],
+                                           [2, 2, 2]])
+
+    vals4 = [5] * 4
+    adjustments[4] = [
+        adjustment_type(
+            0, 3, 2, 2,
+            array([coerce_to_dtype(dtype, val) for val in vals4]))
+    ]
+    buffer_as_of[4] = make_expected_dtype([[4, 2, 5],
+                                           [4, 2, 5],
+                                           [1, 2, 5],
+                                           [2, 2, 5],
+                                           [2, 2, 2],
+                                           [2, 2, 2]])
+
+    vals5 = range(1, 6)
+    adjustments[5] = [
+        adjustment_type(
+            0, 4, 1, 1,
+            array([coerce_to_dtype(dtype, val) for val in vals5])),
+    ]
+    buffer_as_of[5] = make_expected_dtype([[4, 1, 5],
+                                           [4, 2, 5],
+                                           [1, 3, 5],
+                                           [2, 4, 5],
+                                           [2, 5, 2],
+                                           [2, 2, 2]])
+    return _gen_expectations(
+        baseline,
+        missing_value,
+        adjustments,
+        buffer_as_of,
+        nrows=6,
+        perspective_offsets=(0, 1),
+    )
+
+
+def _gen_expectations(baseline,
+                      missing_value,
+                      adjustments,
+                      buffer_as_of,
+                      nrows,
+                      perspective_offsets):
+
+    for windowlen, perspective_offset in product(valid_window_lengths(nrows),
+                                                 perspective_offsets):
+        # How long is an iterator of length-N windows on this buffer?
+        # For example, for a window of length 3 on a buffer of length 6, there
+        # are four valid windows.
         num_legal_windows = num_windows_of_length_M_on_buffers_of_length_N(
             windowlen, nrows
         )
 
-        yield (
-            "dtype_%s_length_%d" % (baseline.dtype, windowlen),
-            baseline,
+        # Build the sequence of regions in the underlying buffer we expect to
+        # see. For example, with a window length of 3 on a buffer of length 6,
+        # we expect to see:
+        #  (buffer[0:3], buffer[1:4], buffer[2:5], buffer[3:6])
+        #
+        slices = [slice(i, i + windowlen) for i in range(num_legal_windows)]
+
+        # The sequence of perspectives we expect to take on the underlying
+        # data. For example, with a window length of 3 and a perspective offset
+        # of 1, we expect to see:
+        #  (buffer_as_of[3], buffer_as_of[4], buffer_as_of[5], buffer_as_of[5])
+        #
+        initial_perspective = windowlen + perspective_offset - 1
+        perspectives = range(
+            initial_perspective,
+            initial_perspective + num_legal_windows
+        )
+
+        def as_of(p):
+            # perspective_offset can push us past the end of the underlying
+            # buffer/adjustments. When it does, we should always see the latest
+            # version of the buffer.
+            if p >= len(buffer_as_of):
+                return buffer_as_of[-1]
+            return buffer_as_of[p]
+
+        expected_iterator_results = [
+            as_of(perspective)[slice_]
+            for slice_, perspective in zip(slices, perspectives)
+        ]
+
+        test_name = "dtype_{}_length_{}_perpective_offset_{}".format(
+            baseline.dtype,
             windowlen,
-            adjustments,
-            missing_value,
-            [
-                # This is a nasty expression...
-                #
-                # Reading from right to left: we want a slice of length
-                # 'windowlen', starting at 'offset', from the buffer on which
-                # we've applied all adjustments corresponding to the last row
-                # of the data, which will be (offset + windowlen - 1).
-                buffer_as_of[offset + windowlen - 1][offset:offset + windowlen]
-                for offset in range(num_legal_windows)
-            ],
+            perspective_offset,
+        )
+
+        yield AdjustmentCase(
+            name=test_name,
+            baseline=baseline,
+            window_length=windowlen,
+            adjustments=adjustments,
+            missing_value=missing_value,
+            perspective_offset=perspective_offset,
+            expected_result=expected_iterator_results
         )
 
 
@@ -263,8 +493,60 @@ class AdjustedArrayTestCase(TestCase):
 
     @parameterized.expand(
         chain(
-            _gen_unadjusted_cases(float64_dtype),
-            _gen_unadjusted_cases(datetime64ns_dtype),
+            _gen_unadjusted_cases(
+                'float',
+                make_input=as_dtype(float64_dtype),
+                make_expected_output=as_dtype(float64_dtype),
+                missing_value=default_missing_value_for_dtype(float64_dtype),
+            ),
+            _gen_unadjusted_cases(
+                'datetime',
+                make_input=as_dtype(datetime64ns_dtype),
+                make_expected_output=as_dtype(datetime64ns_dtype),
+                missing_value=default_missing_value_for_dtype(
+                    datetime64ns_dtype
+                ),
+            ),
+            # Test passing an array of strings to AdjustedArray.
+            _gen_unadjusted_cases(
+                'bytes_ndarray',
+                make_input=as_dtype(bytes_dtype),
+                make_expected_output=as_labelarray(bytes_dtype, b''),
+                missing_value=b'',
+            ),
+            _gen_unadjusted_cases(
+                'unicode_ndarray',
+                make_input=as_dtype(unicode_dtype),
+                make_expected_output=as_labelarray(unicode_dtype, u''),
+                missing_value=u'',
+            ),
+            _gen_unadjusted_cases(
+                'object_ndarray',
+                make_input=lambda a: a.astype(unicode).astype(object),
+                make_expected_output=as_labelarray(unicode_dtype, u''),
+                missing_value='',
+            ),
+            # Test passing a LabelArray directly to AdjustedArray.
+            _gen_unadjusted_cases(
+                'bytes_labelarray',
+                make_input=as_labelarray(bytes_dtype, b''),
+                make_expected_output=as_labelarray(bytes_dtype, b''),
+                missing_value=b'',
+            ),
+            _gen_unadjusted_cases(
+                'unicode_labelarray',
+                make_input=as_labelarray(unicode_dtype, None),
+                make_expected_output=as_labelarray(unicode_dtype, None),
+                missing_value=u'',
+            ),
+            _gen_unadjusted_cases(
+                'object_labelarray',
+                make_input=(
+                    lambda a: LabelArray(a.astype(unicode).astype(object), u'')
+                ),
+                make_expected_output=as_labelarray(unicode_dtype, ''),
+                missing_value='',
+            ),
         )
     )
     def test_no_adjustments(self,
@@ -273,14 +555,14 @@ class AdjustedArrayTestCase(TestCase):
                             lookback,
                             adjustments,
                             missing_value,
-                            expected):
+                            perspective_offset,
+                            expected_output):
 
         array = AdjustedArray(data, NOMASK, adjustments, missing_value)
         for _ in range(2):  # Iterate 2x ensure adjusted_arrays are re-usable.
-            window_iter = array.traverse(lookback)
-            for yielded, expected_yield in zip_longest(window_iter, expected):
-                self.assertEqual(yielded.dtype, data.dtype)
-                assert_array_equal(yielded, expected_yield)
+            in_out = zip(array.traverse(lookback), expected_output)
+            for yielded, expected_yield in in_out:
+                check_arrays(yielded, expected_yield)
 
     @parameterized.expand(_gen_multiplicative_adjustment_cases(float64_dtype))
     def test_multiplicative_adjustments(self,
@@ -289,36 +571,98 @@ class AdjustedArrayTestCase(TestCase):
                                         lookback,
                                         adjustments,
                                         missing_value,
+                                        perspective_offset,
                                         expected):
 
         array = AdjustedArray(data, NOMASK, adjustments, missing_value)
         for _ in range(2):  # Iterate 2x ensure adjusted_arrays are re-usable.
-            window_iter = array.traverse(lookback)
+            window_iter = array.traverse(
+                lookback,
+                perspective_offset=perspective_offset,
+            )
             for yielded, expected_yield in zip_longest(window_iter, expected):
-                assert_array_equal(yielded, expected_yield)
+                check_arrays(yielded, expected_yield)
 
     @parameterized.expand(
         chain(
             _gen_overwrite_adjustment_cases(float64_dtype),
             _gen_overwrite_adjustment_cases(datetime64ns_dtype),
+            _gen_overwrite_1d_array_adjustment_case(float64_dtype),
+            _gen_overwrite_1d_array_adjustment_case(datetime64ns_dtype),
+            # There are six cases here:
+            # Using np.bytes/np.unicode/object arrays as inputs.
+            # Passing np.bytes/np.unicode/object arrays to LabelArray,
+            # and using those as input.
+            #
+            # The outputs should always be LabelArrays.
+            _gen_unadjusted_cases(
+                'bytes_ndarray',
+                make_input=as_dtype(bytes_dtype),
+                make_expected_output=as_labelarray(bytes_dtype, b''),
+                missing_value=b'',
+            ),
+            _gen_unadjusted_cases(
+                'unicode_ndarray',
+                make_input=as_dtype(unicode_dtype),
+                make_expected_output=as_labelarray(unicode_dtype, u''),
+                missing_value=u'',
+            ),
+            _gen_unadjusted_cases(
+                'object_ndarray',
+                make_input=lambda a: a.astype(unicode).astype(object),
+                make_expected_output=as_labelarray(unicode_dtype, u''),
+                missing_value=u'',
+            ),
+            _gen_unadjusted_cases(
+                'bytes_labelarray',
+                make_input=as_labelarray(bytes_dtype, b''),
+                make_expected_output=as_labelarray(bytes_dtype, b''),
+                missing_value=b'',
+            ),
+            _gen_unadjusted_cases(
+                'unicode_labelarray',
+                make_input=as_labelarray(unicode_dtype, u''),
+                make_expected_output=as_labelarray(unicode_dtype, u''),
+                missing_value=u'',
+            ),
+            _gen_unadjusted_cases(
+                'object_labelarray',
+                make_input=(
+                    lambda a: LabelArray(
+                        a.astype(unicode).astype(object),
+                        None,
+                    )
+                ),
+                make_expected_output=as_labelarray(unicode_dtype, u''),
+                missing_value=None,
+            ),
         )
     )
     def test_overwrite_adjustment_cases(self,
                                         name,
-                                        data,
+                                        baseline,
                                         lookback,
                                         adjustments,
                                         missing_value,
+                                        perspective_offset,
                                         expected):
-        array = AdjustedArray(data, NOMASK, adjustments, missing_value)
+        array = AdjustedArray(baseline, NOMASK, adjustments, missing_value)
+
         for _ in range(2):  # Iterate 2x ensure adjusted_arrays are re-usable.
-            window_iter = array.traverse(lookback)
+            window_iter = array.traverse(
+                lookback,
+                perspective_offset=perspective_offset,
+            )
             for yielded, expected_yield in zip_longest(window_iter, expected):
-                self.assertEqual(yielded.dtype, data.dtype)
-                assert_array_equal(yielded, expected_yield)
+                check_arrays(yielded, expected_yield)
 
     @parameter_space(
-        dtype=[float64_dtype, int64_dtype, datetime64ns_dtype],
+        __fail_fast=True,
+        dtype=[
+            float64_dtype,
+            int64_dtype,
+            datetime64ns_dtype,
+        ],
         missing_value=[0, 10000],
         window_length=[2, 3],
     )
@@ -338,6 +682,37 @@ class AdjustedArrayTestCase(TestCase):
 
         gen_expected = moving_window(masked_baseline, window_length)
         gen_actual = array.traverse(window_length)
+        for expected, actual in zip(gen_expected, gen_actual):
+            check_arrays(expected, actual)
+
+    @parameter_space(
+        __fail_fast=True,
+        dtype=[bytes_dtype, unicode_dtype, object_dtype],
+        missing_value=["0", "-1", ""],
+        window_length=[2, 3],
+    )
+    def test_masking_with_strings(self, dtype, missing_value, window_length):
+        missing_value = coerce_to_dtype(dtype, missing_value)
+        baseline_ints = arange(15).reshape(5, 3)
+
+        # Coerce to string first so that coercion to object gets us an array of
+        # string objects.
+        baseline = baseline_ints.astype(str).astype(dtype)
+        mask = (baseline_ints % 2).astype(bool)
+
+        masked_baseline = LabelArray(baseline, missing_value=missing_value)
+        masked_baseline[~mask] = missing_value
+
+        array = AdjustedArray(
+            baseline,
+            mask,
+            adjustments={},
+            missing_value=missing_value,
+        )
+
+        gen_expected = moving_window(masked_baseline, window_length)
+        gen_actual = array.traverse(window_length=window_length)
+
         for expected, actual in zip(gen_expected, gen_actual):
             check_arrays(expected, actual)
 
